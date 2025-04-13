@@ -1,0 +1,4 @@
+black
+loguru
+pytest
+fastapi[all]
