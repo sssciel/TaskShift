@@ -1,1 +1,7 @@
 env
+data/
+note_test*
+__pycache__
+*_logs
+study.pkl
+.*
