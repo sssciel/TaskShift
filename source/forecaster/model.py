@@ -1,12 +1,12 @@
 from neuralprophet import NeuralProphet, set_log_level
 import numpy as np
-from .core import get_data, Device
+from .core import get_device_data, Device
 from configs.config import HyperparameterConfig
 
 model_config = HyperparameterConfig().get_config()
 
-ts_dataframe_cpu = get_data(Device.CPU).copy()
-ts_dataframe_gpu = get_data(Device.GPU).copy()
+ts_dataframe_cpu = get_device_data(Device.CPU).copy()
+ts_dataframe_gpu = get_device_data(Device.GPU).copy()
 
 # NeuralProphet config to disable logs.
 set_log_level("CRITICAL")
