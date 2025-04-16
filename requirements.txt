@@ -8,3 +8,5 @@ fastapi[all]
 neuralprophet
 scikit-learn
 optuna
+influxdb-client[ciso]
+python-dotenv
