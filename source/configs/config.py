@@ -1,5 +1,7 @@
 from yaml import safe_load, YAMLError
 from pathlib import Path
+from enum import StrEnum
+from dotenv import load_dotenv
 
 
 # Files, where configs are stored.
@@ -11,8 +13,9 @@ database_config_file = ".env"
 
 hyperparams_config = {}
 service_config = {}
-database_config = {}
 
+# Loading environment variables from .env instead of forming another config
+load_dotenv(dotenv_path=Path(__file__).absolute().parent.joinpath(database_config_file))
 
 default_hyperparams_config = {
     "n_lags": 96,
@@ -24,6 +27,11 @@ default_hyperparams_config = {
     "trend_reg": 0,
     "n_forecasts": 192,
 }
+
+
+class Device(StrEnum):
+    CPU = "cpu"
+    GPU = "gpu"
 
 
 def get_yaml_config(file_name: str, service_name: str, default_params=None):
@@ -65,4 +73,13 @@ class HyperparameterConfig(ConfigurationBase):
             file=hyperparams_config_file,
             service_name="hyperparameter configuration file",
             default_params=default_hyperparams_config,
+        )
+
+
+class ServiceConfig(ConfigurationBase):
+    def __init__(self):
+        super().__init__(
+            file=serivice_config_file,
+            service_name="service configuration file",
+            default_params={"country": "RU"},
         )
