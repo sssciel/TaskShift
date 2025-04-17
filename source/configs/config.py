@@ -15,7 +15,8 @@ hyperparams_config = {}
 service_config = {}
 
 # Loading environment variables from .env instead of forming another config
-load_dotenv(dotenv_path=Path(__file__).absolute().parent.joinpath(database_config_file))
+def load_env_config():
+    load_dotenv(dotenv_path=Path(__file__).absolute().parent.joinpath(database_config_file))
 
 default_hyperparams_config = {
     "n_lags": 96,

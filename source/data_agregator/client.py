@@ -1,6 +1,9 @@
 import influxdb_client, os, time
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
+from configs.config import load_env_config
+
+load_env_config()
 
 token = os.getenv("INFLUXDB_TOKEN", None)
 org = os.getenv("INFLUXDB_ORG", "cluster")
