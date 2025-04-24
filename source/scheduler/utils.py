@@ -1,5 +1,4 @@
 from collections import deque
-from configs.config import ClusterConfig
 
 class UniqueQueue:
     """
@@ -38,11 +37,11 @@ class UniqueQueue:
 
     def put(self, item):
         if item not in self._set:
-            self._dq.append(item)
+            self._dq.appendleft(item)
             self._set.add(item)
 
     def pop(self):
-        item = self._dq.popleft()
+        item = self._dq.pop()
         self._set.remove(item)
         return item
 
@@ -52,16 +51,5 @@ class UniqueQueue:
     def empty(self):
         return not self._dq
 
-cluster_config = ClusterConfig()
-
-def get_devices_count():
-    cpu_count, gpu_count = 0, 0
-
-    for node in cluster_config.get_config()["nodes"]:
-        node_count = node["count"]
-        cpu_count += node["cpu"]["sockets"] * node["cpu"]["cores_per_cpu"] * node_count
-
-        if node["gpu"] is not None:
-            gpu_count += node["gpu"]["count"] * node_count
-
-    return cpu_count, gpu_count
+    def __contains__(self, item):
+        return item in self._set
