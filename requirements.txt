@@ -10,3 +10,5 @@ scikit-learn
 optuna
 influxdb-client[ciso]
 python-dotenv
+requests
+apscheduler
