@@ -102,3 +102,15 @@ class ClusterConfig(ConfigurationBase):
 
     def get_cluster_info(self):
         return self.config["cluster"]
+
+    def get_devices_count(self):
+        cpu_count, gpu_count = 0, 0
+
+        for node in self.config["nodes"]:
+            node_count = node["count"]
+            cpu_count += node["cpu"]["sockets"] * node["cpu"]["cores_per_cpu"] * node_count
+
+            if node["gpu"] is not None:
+                gpu_count += node["gpu"]["count"] * node_count
+
+        return cpu_count, gpu_count
