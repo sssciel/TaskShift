@@ -6,17 +6,22 @@ from dotenv import load_dotenv
 
 # Files, where configs are stored.
 # The files must be in the "source/config" folder!
+cluster_config_file = "cluster.yml"
 hyperparams_config_file = "hyperparams.yml"
-serivice_config_file = "config.yml"
+service_config_file = "service.yml"
 database_config_file = ".env"
 
 
 hyperparams_config = {}
 service_config = {}
 
+
 # Loading environment variables from .env instead of forming another config
 def load_env_config():
-    load_dotenv(dotenv_path=Path(__file__).absolute().parent.joinpath(database_config_file))
+    load_dotenv(
+        dotenv_path=Path(__file__).absolute().parent.joinpath(database_config_file)
+    )
+
 
 default_hyperparams_config = {
     "n_lags": 96,
@@ -80,7 +85,20 @@ class HyperparameterConfig(ConfigurationBase):
 class ServiceConfig(ConfigurationBase):
     def __init__(self):
         super().__init__(
-            file=serivice_config_file,
+            file=service_config_file,
             service_name="service configuration file",
             default_params={"country": "RU"},
         )
+
+class ClusterConfig(ConfigurationBase):
+    def __init__(self):
+        super().__init__(
+            file=cluster_config_file,
+            service_name="cluster configuration file"
+        )
+
+    def get_nodes_info(self):
+        return self.config["nodes"]
+
+    def get_cluster_info(self):
+        return self.config["cluster"]

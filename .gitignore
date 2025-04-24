@@ -5,3 +5,4 @@ __pycache__
 *_logs
 study.pkl
 .*
+test_http_*

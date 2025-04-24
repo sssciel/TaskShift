@@ -111,4 +111,7 @@ class ForecastModel:
         return self.forecast_cpu, self.forecast_gpu
 
     def get_cpu_forecast(self):
+        return self.forecast_cpu
+
+    def get_gpu_forecast(self):
         return self.forecast_gpu
