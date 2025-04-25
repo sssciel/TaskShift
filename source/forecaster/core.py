@@ -1,4 +1,3 @@
-from enum import Enum
 import pandas as pd
 from configs.config import Device
 from data_agregator.core import get_full_data_db
@@ -27,7 +26,7 @@ def prepare_ts(df: pd.DataFrame, device: Device) -> pd.DataFrame:
     # NP reads df only with ds and y columns
     df = df.rename(columns={f"{device}_load": "y"}).copy()
 
-    # Exclude anomalies when the cluster was not working.
+    # Exclude anomalies when the cluster was undergoing preventive maintenance.
     df.loc[df["y"] < 10.58, "y"] = pd.NA
 
     # IDK why, but ts sometimes has duplicates
