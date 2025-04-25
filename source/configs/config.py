@@ -1,8 +1,8 @@
-from yaml import safe_load, YAMLError
-from pathlib import Path
 from enum import StrEnum
-from dotenv import load_dotenv
+from pathlib import Path
 
+from dotenv import load_dotenv
+from yaml import YAMLError, safe_load
 
 # Files, where configs are stored.
 # The files must be in the "source/config" folder!
@@ -90,11 +90,11 @@ class ServiceConfig(ConfigurationBase):
             default_params={"country": "RU"},
         )
 
+
 class ClusterConfig(ConfigurationBase):
     def __init__(self):
         super().__init__(
-            file=cluster_config_file,
-            service_name="cluster configuration file"
+            file=cluster_config_file, service_name="cluster configuration file"
         )
 
     def get_nodes_info(self):
@@ -108,7 +108,9 @@ class ClusterConfig(ConfigurationBase):
 
         for node in self.config["nodes"]:
             node_count = node["count"]
-            cpu_count += node["cpu"]["sockets"] * node["cpu"]["cores_per_cpu"] * node_count
+            cpu_count += (
+                node["cpu"]["sockets"] * node["cpu"]["cores_per_cpu"] * node_count
+            )
 
             if node["gpu"] is not None:
                 gpu_count += node["gpu"]["count"] * node_count

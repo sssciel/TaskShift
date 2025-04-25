@@ -1,6 +1,7 @@
 from influxdb_client import Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
-from .client import db_client, org, bucket
+
+from .client import bucket, db_client, org
 
 
 def save_data_db(measurement, df):

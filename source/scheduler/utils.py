@@ -1,11 +1,12 @@
 from collections import deque
 
+
 class UniqueQueue:
     """
-    The UniqueQueue is needed in order to save the 
-    queue state between calls to get_sessionid_queue_tasks_test. 
-    Without this, the queue would have to be rebuilt with each 
-    call, and failed launches would still be at the top, 
+    The UniqueQueue is needed in order to save the
+    queue state between calls to get_sessionid_queue_tasks_test.
+    Without this, the queue would have to be rebuilt with each
+    call, and failed launches would still be at the top,
     instead of falling to the beginning.
     """
 
@@ -14,14 +15,14 @@ class UniqueQueue:
         self._set = set(self._dq)
 
     def add_elements(self, elements):
-        for item in (set(elements) - self._set):
+        for item in set(elements) - self._set:
             self._dq.append(item)
             self._set.add(item)
 
     def rebuild(self, elements):
         """
-        Adds items that are not in the queue and 
-        removes items that are missing from the elements, 
+        Adds items that are not in the queue and
+        removes items that are missing from the elements,
         preserving the order.
 
         Args:
@@ -31,7 +32,7 @@ class UniqueQueue:
         self._dq = deque(x for x in self._dq if x in elements)
         self._set = set(self._dq)
 
-        for item in (elements_set - self._set):
+        for item in elements_set - self._set:
             self._dq.append(item)
             self._set.add(item)
 
