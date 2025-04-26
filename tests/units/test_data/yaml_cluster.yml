@@ -1,0 +1,14 @@
+cluster:
+  foo: 123
+nodes:
+  - count: 2
+    cpu:
+      sockets: 1
+      cores_per_cpu: 4
+    gpu:
+      count: 1
+  - count: 1
+    cpu:
+      sockets: 2
+      cores_per_cpu: 2
+    gpu: null
