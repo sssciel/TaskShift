@@ -7,6 +7,8 @@ from apscheduler.triggers.cron import CronTrigger
 from configs.config import ClusterConfig
 from forecaster.model import ForecastModel
 
+from configs.logging import log
+
 from .integration import (
     get_sessionid_pending_tasks_test,
     get_sessionid_running_tasks_test,
@@ -17,16 +19,38 @@ from .utils import UniqueQueue
 task_queue = UniqueQueue()
 cluster_config = ClusterConfig()
 
+# NeuralProphet model with forecasts
 forecast_model = None
+
+# Last started scheduler's job.
 last_job = None
+next_monday = None
 
-
+# compute_forecasts creates and trains a forecasting model.
 def compute_forecasts():
+    global next_monday
+
+    log.info("It’s the end of Friday. Forecast calculation has just begun.")
+
     global forecast_model
     forecast_model = ForecastModel()
 
+    # Calculate the date of the next Monday
+    # Needed to compute the remaining time
+    next_monday = (
+        datetime.now() + timedelta(days=7-datetime.now().weekday())
+    ).replace(microsecond=0, second=0, minute=0, hour=0)
+
 
 def task_scheduler():
+    if forecast_model is None:
+        log.debug(
+            "Scheduler ran before forecasts were computed. Launching compute_forecasts"
+        )
+        compute_forecasts()
+
+    log.debug(f"It's {datetime.now().strftime("%A")} now. New cycle is running.")
+
     global last_job
     global task_queue
     cpu_avg, gpu_avg = 0, 0
@@ -37,50 +61,48 @@ def task_scheduler():
     elif datetime.now().weekday() == 6:  # sunday
         cpu_avg, gpu_avg = forecast_model.get_sunday_avg()
 
+    # "Free" resources for the remaining time.
     available_cpu, available_gpu = 100 - cpu_avg, 100 - gpu_avg
 
-    # To check how many tasks have already been started by the TaskShift.
+    # To track how many resources were consumed by tasks started by the scheduler.
     cpu_used, gpu_used = 0, 0
 
     tasks_running = get_sessionid_running_tasks_test()
     tasks_queue = get_sessionid_pending_tasks_test()
 
-    # Задача будет в ожидании только если она не запустилась.
-    # Если задача не запустилась, ее нужно опустить в низ очереди,
-    # Чтобы постоянно не пытаться повторять ее запуск.
+    # If the last task didn't start, put it back at the end of the queue
     if (last_job is not None) and (last_job in task_queue):
+        log.debug(f"Task {last_job.get('job_id', 'UNDEFINED')} didn't start.")
         task_queue.put(last_job)
 
     last_job = None
 
-    # Добавляю новые задачи в очередь сервиса и удаляю уже запущенные.
+    # Add new tasks to the service queue and remove already started ones
     task_queue.rebuild(tasks_queue)
 
-    all_cpu_count, all_gpu_count = ClusterConfig.get_devices_count()
-
-    # Когда будет следующий понедельник.
-    # Нужно для расчета оставшегося времени.
-    next_monday = (
-        datetime.now() + timedelta(days=7 - datetime.now().weekday())
-    ).replace(microsecond=0, second=0, minute=0, hour=0)
+    all_cpu_count, all_gpu_count = cluster_config.get_devices_count()
 
     while not task_queue.empty():
         task = task_queue.pop()
         cpu_req = task["cpu_cores_count"]
         gpu_req = task["gpu_count"]
-        # Сколько ресурсов займет задача и влезет ли она в уже занятые
+
+        # How many resources the task requires and whether it fits
         cpu_load_req = cpu_req / all_cpu_count * 100
         gpu_load_req = gpu_req / all_gpu_count * 100
 
         if (
             (cpu_used + cpu_load_req < available_cpu)
-            and (gpu_used + gpu_load_req < available_gpu)
+            and (gpu_used + gpu_load_req < available_gpu) 
             and (datetime.now() + timedelta(minutes=task["time_limit"]) < next_monday)
         ):
-            job_id = task["job_id"]
-            last_job = job_id
-            run_task(job_id)
+            log.debug(f"Try to start task {task["job_id"]}.")
+
+            last_job = task
+            run_task(task["job_id"])
+            break
         else:
+            log.debug(f"Can't run task {task['job_id']}. Moving to next task.")
             task_queue.put(task)
 
 
@@ -93,13 +115,13 @@ def main():
 
     scheduler.add_job(
         compute_forecasts,
-        trigger=CronTrigger(day_of_week="thu, fri", hour=23, minute=32),
+        trigger=CronTrigger(day_of_week="fri", hour=23, minute=32),
         replace_existing=True,
     )
 
     scheduler.add_job(
         task_scheduler,
-        trigger=CronTrigger(day_of_week="thu, sat,sun", minute="*/10"),
+        trigger=CronTrigger(day_of_week="sat,sun", minute="*/10"),
         replace_existing=True,
     )
 
@@ -107,6 +129,7 @@ def main():
     signal.signal(signal.SIGTERM, shutdown)
 
     try:
+        log.info("TaskShift is running.")
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):
         scheduler.shutdown()

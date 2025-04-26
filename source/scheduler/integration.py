@@ -2,6 +2,7 @@ import json
 import os
 import time
 from enum import Enum
+from configs.logging import log
 
 import requests
 
@@ -21,13 +22,13 @@ service_host = os.getenv("TASKMASTER_HOST")
 user_token = os.getenv("TASKMASTER_TOKEN", "")
 
 
+# get_url_from_dict create URL from filter dict 
 def get_url_from_dict(query: dict):
     return "&".join(f"{k}={v}" for k, v in query.items())
 
 
 def make_api_call(
     request: str,
-    filters: dict = {},
     cookies: dict = {},
     headers: dict = {},
     correct_status: int = 200,
@@ -35,7 +36,7 @@ def make_api_call(
     error_count = 0
     while error_count < MAX_ERROR_COUNT:
         response = requests.get(
-            service_host + request,
+            service_host + str(request),
             cookies=cookies,
             headers=headers,
         )
@@ -44,26 +45,12 @@ def make_api_call(
             break
         else:
             error_count += 1
-            print("Can't connect to HPC TaskMaster. Retrying...")
+            log.error(f"Request {request}.\nCan't connect to HPC TaskMaster. Retrying...")
             time.sleep(6)
     else:
-        raise Exception(
-            f"FATAL: Can't connect to HPC TaskMaster. Aborted. Error: {response.text}"
-        )
+        log.critical(f"Request {request}.\nCan't connect to HPC TaskMaster. Aborted. Error: {response.text}")
 
     return response
-
-
-# Test function that uses a user's cookie instead of a token.
-def get_sessionid_running_tasks():
-    filters = {"state": 1}
-    cookies = {"sessionid": sessionid, "csrftoken": csrf}
-
-    result = make_api_call(
-        request=f"job/?{get_url_from_dict(filters)}", cookies=cookies
-    ).json()["results"]
-
-    return result
 
 
 def get_tasks_with_state(state: TaskStates = 0):
@@ -92,6 +79,9 @@ def run_task(jobid: str):
     return result
 
 
+## Test Zone
+## TO DO: Remove these functions
+
 def get_sessionid_running_tasks_test():
     with open("test_http_query.json", encoding="UTF-8") as f:
         r = json.load(f)
@@ -105,9 +95,21 @@ def get_sessionid_pending_tasks_test():
     result = {}
     for task in response["results"]:
         result[task["job_id"]] = {
-            "cpu_count": task["cpu_cores_count"],
+            "job_id": task["job_id"],  # second time for Queue
+            "cpu_cores_count": task["cpu_cores_count"],
             "gpu_count": task["gpu_count"],
             "time_limit": task["time_limit"],
         }
+
+    return result
+
+# Test function that uses a user's cookie instead of a token.
+def get_sessionid_running_tasks():
+    filters = {"state": 1}
+    cookies = {"sessionid": sessionid, "csrftoken": csrf}
+
+    result = make_api_call(
+        request=f"job/?{get_url_from_dict(filters)}", cookies=cookies
+    ).json()["results"]
 
     return result
