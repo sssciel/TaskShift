@@ -2,7 +2,7 @@ from influxdb_client import Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
 
 from .client import bucket, db_client, org
-
+from configs.logging import log
 
 def save_data_db(measurement, df):
     write_api = db_client.write_api(write_options=SYNCHRONOUS)
@@ -18,8 +18,12 @@ def save_data_db(measurement, df):
 
     write_api.close()
 
+    log.debug("The data has been written to the database.")
+
 
 def get_full_data_db():
+    log.info("Downloading data from the database")
+
     write_api = db_client.query_api()
 
     # Collect all the data from the database and combine the cpu and gpu load.

@@ -1,4 +1,5 @@
 from collections import deque
+from configs.logging import log
 
 
 class UniqueQueue:
@@ -14,11 +15,6 @@ class UniqueQueue:
         self._dq = deque(initial or [])
         self._set = set(self._dq)
 
-    def add_elements(self, elements):
-        for item in set(elements) - self._set:
-            self._dq.append(item)
-            self._set.add(item)
-
     def rebuild(self, elements):
         """
         Adds items that are not in the queue and
@@ -28,22 +24,41 @@ class UniqueQueue:
         Args:
             elements (List)
         """
+        log.trace("Rebuilding UniqueQueue...")
         elements_set = set(elements)
         self._dq = deque(x for x in self._dq if x in elements)
         self._set = set(self._dq)
 
         for item in elements_set - self._set:
-            self._dq.append(item)
+            self._dq.append(elements[item])
             self._set.add(item)
 
+            log.trace(f"Element {item} was added to UniqueQueue")
+
+        log.debug(f"UniqueQueue rebuilding was finished. Total length = {len(self._set)}")
+
     def put(self, item):
-        if item not in self._set:
+        # Та же ситуация, что и в pop.
+        job_id = item["job_id"]
+        if job_id not in self._set:
             self._dq.appendleft(item)
-            self._set.add(item)
+            self._set.add(job_id)
+
+            log.trace(f"Element {job_id} was added to UniqueQueue. Length = {len(self._set)}")
 
     def pop(self):
         item = self._dq.pop()
-        self._set.remove(item)
+        # Set не умеет хранить нехэшируемые объекты, то есть словари, поэтому 
+        # весь сет состоит только из чисел. В то же самое время очередь состоит 
+        # только из словарей. Поэтому в самих словарях мне пришлось 
+        # продублировать job_id, что видно в коде integrations. Кроме этого, 
+        # когда я достаю задачу из очереди, я достаю словарь, в котором есть 
+        # поле job_id, а сет состоит только из чисел. Поэтому пришлось захардкодить 
+        # ключ job_id при remove из сета, чтобы достать этот самый ID.
+
+        self._set.remove(item["job_id"]) # TO DO: написать абстракцию класса задачи
+
+        log.trace(f"Element {item["job_id"]} was popped from UniqueQueue. Length = {len(self._set)}")
         return item
 
     def __len__(self):

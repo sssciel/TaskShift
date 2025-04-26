@@ -1,11 +1,25 @@
 import numpy as np
 from configs.config import HyperparameterConfig
+from configs.logging import log
+
+# Fix NP logs. This has to be done before NP import.
+import logging  # noqa
+
+logging.getLogger("NP.plotly").disabled = True  # noqa
+
+# Also fix NP log.
+import warnings  # noqa
+
+warnings.simplefilter(action="ignore", category=FutureWarning)  # noqa
+
 from neuralprophet import NeuralProphet, set_log_level
 
 from .core import Device, get_device_data
 
 model_config = HyperparameterConfig().get_config()
 
+
+# TimeSeries for CPU and GPU
 ts_dataframe_cpu = get_device_data(Device.CPU).copy()
 ts_dataframe_gpu = get_device_data(Device.GPU).copy()
 
@@ -16,15 +30,7 @@ set_log_level("CRITICAL")
 FORECASTS_IN_ONE_DAY = 96
 
 
-# So that the model is not re-trained every time.
-_model_cpu, _model_gpu = None, None
-_forecasts_cpu, _forecasts_gpu = None, None
-
-
-def train_model():
-    global _model_cpu
-    global _model_gpu
-
+def get_model():
     model_cpu = NeuralProphet(
         **model_config,
     )
@@ -40,28 +46,13 @@ def train_model():
     model_cpu.fit(ts_dataframe_cpu)
     model_gpu.fit(ts_dataframe_gpu)
 
-    _model_cpu = model_cpu
-    _model_gpu = model_gpu
+    log.debug("NP models were trained.")
 
-
-def get_model():
-    global _model_cpu
-    global _model_gpu
-
-    if (_model_cpu == None) or (_model_gpu == None):
-        print("There is no already created model, a new one is being trained.")
-        train_model()
-
-    return _model_cpu, _model_gpu
-
+    return model_cpu, model_gpu
 
 # Create_forecast creates a frame of future dates and fills
 # them based on the created model.
-def create_forecasts():
-    global _forecasts_cpu
-    global _forecasts_gpu
-
-    model_cpu, model_gpu = get_model()
+def get_forecasts(model_cpu, model_gpu):
     forecasts_count = model_config["n_forecasts"]
 
     future_dataframe_cpu = model_cpu.make_future_dataframe(
@@ -86,30 +77,23 @@ def create_forecasts():
     if (len(forecasts_cpu) != forecasts_count) or (
         len(forecasts_gpu) != forecasts_count
     ):
-        raise "An error in receiving predictions."
+        log.critical("An error in receiving predictions. The length isn't correct.")
+        # The maximum predicted load will not allow the scheduler to work.
+        forecasts_cpu = [100]
+        forecasts_gpu = [100]
 
-    _forecasts_cpu = forecasts_cpu.clip(0, 100)
-    _forecasts_gpu = forecasts_gpu.clip(0, 100)
+    forecasts_cpu = forecasts_cpu.clip(0, 100)
+    forecasts_gpu = forecasts_gpu.clip(0, 100)
 
+    log.info("Forecasts were created. CPU_avg={:.2f}%, GPU_avg={:.2f}%", forecasts_cpu.mean(), forecasts_gpu.mean())
 
-def get_forecasts():
-    global _forecasts_cpu
-    global _forecasts_gpu
-
-    if (_forecasts_cpu == None) or (_forecasts_gpu == None):
-        print(
-            """There are no predictions that have 
-              already been created. New ones are being created."""
-        )
-        create_forecasts()
-
-    return _forecasts_cpu, _forecasts_gpu
+    return forecasts_cpu, forecasts_gpu
 
 
 class ForecastModel:
     def __init__(self):
         self.model = get_model()
-        self.forecast_cpu, self.forecast_gpu = get_forecasts()
+        self.forecast_cpu, self.forecast_gpu = get_forecasts(*self.model)
 
     def get_forecasts(self):
         return self.forecast_cpu, self.forecast_gpu
@@ -120,6 +104,8 @@ class ForecastModel:
     def get_gpu_forecast(self):
         return self.forecast_gpu
 
+    # get_avg_window return tuple with avg cpu and gpu workload.
+    # df_list for specify devices.
     def get_avg_window(self, start=0, end=None, df_list=[]):
         if not df_list:
             df_list = list(self.get_forecasts())

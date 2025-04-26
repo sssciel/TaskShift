@@ -12,3 +12,4 @@ influxdb-client[ciso]
 python-dotenv
 requests
 apscheduler
+pre-commit

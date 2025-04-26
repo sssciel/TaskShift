@@ -3,7 +3,7 @@ from configs.config import Device
 from data_agregator.core import get_full_data_db
 
 
-# get_full_ts returns df with data and cpu/gpu loads.
+# get_full_ts returns dataframe with data and cpu/gpu loads.
 def get_full_ts() -> pd.DataFrame:
     df = get_full_data_db()
 
@@ -18,7 +18,7 @@ def get_full_ts() -> pd.DataFrame:
     return df
 
 
-# prepare_ts prepares df for NeuralProphet.
+# prepare_ts prepares dataframe for NeuralProphet.
 def prepare_ts(df: pd.DataFrame, device: Device) -> pd.DataFrame:
     # There should only be one device left
     df = df.drop([f"{d.value}_load" for d in Device if d.value != device], axis=1)
