@@ -1,0 +1,109 @@
+// Specification of diagram elements
+specification {
+  element service
+
+  element taskshift_el {
+    style {
+      color indigo
+      opacity 30%
+      border solid
+    }
+  }
+
+  element cluster {
+    style {
+      color gray
+      opacity 30%
+      border solid
+    }
+  }
+
+  element container_nested {
+    style {
+      color indigo
+      opacity 30%
+    }
+  }
+
+  element container
+
+  element person {
+    style {
+      shape person
+      color green
+    }
+  }
+
+  element component {
+    style {}
+  }
+}
+
+model {
+  charisma = cluster "Supercomputer" {
+    technology "SLURM"
+    hpctaskmaster = container "HPC TaskMaster"
+    slurm = container "SLURM"
+    hpctaskmaster -> slurm "Launches jobs bypassing queue"
+  }
+
+  administrator = person "HPC Complex Administrator"
+
+  taskshift = taskshift_el "TaskShift" {
+    influxdb = container "InfluxDB" {
+      icon tech:influxdb
+      style {
+        shape cylinder
+      }
+    }
+
+    backend = container_nested "Backend" {
+      technology "Python"
+
+      aggr = component "Data Aggregation" {
+        technology "InfluxDB Python client"
+        description "Stores and retrieves time-series data"
+      }
+
+      forecaster = component "Time-Series Forecasting" {
+        technology "NeuralProphet"
+        description "Trains model and predicts workload"
+      }
+
+      scheduler = component "Task Scheduler" {
+        description "Implements scheduling decision algorithms"
+      }
+
+      configuration = component "Configuration module" {
+        technology ""
+        description ""
+      }
+    }
+
+    // Internal relationships within TaskShift
+    configuration -> scheduler
+    configuration -> aggr
+    configuration -> forecaster
+    influxdb -> aggr "Reads/writes time-series data"
+    scheduler -> aggr "Sends raw data for storage"
+    aggr -> forecaster "Provides historical observation data"
+    forecaster -> scheduler "Returns average predicted CPU/GPU load"
+  }
+
+  // Cross-system interactions
+  taskshift.backend.aggr -> charisma.hpctaskmaster "Requests CPU/GPU load data" {
+    technology "REST API"
+  }
+  administrator -> taskshift.configuration "Configures scheduler policy"
+  taskshift.scheduler -> charisma.hpctaskmaster "Queries job data and triggers bypass"
+}
+
+views {
+  // Main overview diagram
+  view main of taskshift {
+    title "TaskShift Full Overview"
+    include *
+    include taskshift.backend.*
+    include charisma.*
+  }
+}
