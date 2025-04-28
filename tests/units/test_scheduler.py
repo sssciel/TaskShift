@@ -1,7 +1,7 @@
-import pytest
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
+import pytest
 import scheduler.core as sch
 from scheduler.utils import UniqueQueue
 
@@ -117,6 +117,7 @@ def test_task_scheduler_runs_one_fitting_task(monkeypatch):
     assert calls == ["job1"]
     assert sch.last_job == tasks["job1"]
 
+
 def test_put_and_pop():
     q = UniqueQueue()
     q.put({"job_id": "a"})
@@ -126,6 +127,7 @@ def test_put_and_pop():
     x = q.pop()
     y = q.pop()
     assert {x["job_id"], y["job_id"]} == {"a", "b"}
+
 
 def test_rebuild_adds_and_removes():
     tasks = {
@@ -139,12 +141,14 @@ def test_rebuild_adds_and_removes():
     assert set(ids) == {"x", "y"}
     assert q.pop()["job_id"] == "x"
 
+
 def test_empty_and_len():
     q = UniqueQueue()
     assert q.empty()
     q.put({"job_id": "test"})
     assert not q.empty()
     assert len(q) == 1
+
 
 def test_contains():
     q = UniqueQueue()

@@ -6,12 +6,10 @@ from apscheduler.triggers.cron import CronTrigger
 from configs.logging import log
 from data_agregator.core import get_full_data_db, save_data_db
 from scheduler.core import compute_forecasts, task_scheduler
-from scheduler.integration import (
-    get_sessionid_pending_tasks_test,
-    get_sessionid_running_tasks_test,
-    run_task,
-)
+from scheduler.integration import (get_sessionid_pending_tasks_test,
+                                   get_sessionid_running_tasks_test, run_task)
 from scheduler.utils import UniqueQueue
+
 
 def main():
     scheduler = BlockingScheduler()
@@ -47,10 +45,5 @@ def main():
 
 
 if __name__ == "__main__":
-    a = get_sessionid_pending_tasks_test()
-    un = UniqueQueue()
-    un.rebuild(a)
-    print(a)
-
     log.info("TaskShift is starting.")
     main()
