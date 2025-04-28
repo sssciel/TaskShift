@@ -1,11 +1,19 @@
+from configs.logging import log
 from influxdb_client import Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
 
-from .client import bucket, db_client, org
-from configs.logging import log
+from .client import bucket, get_db_client, org
+
 
 def save_data_db(measurement, df):
-    write_api = db_client.write_api(write_options=SYNCHRONOUS)
+    """
+    Saves the data to the database.
+    Args:
+        measurement (str): The name of the measurement.
+        df (pd.DataFrame): The data to be saved.
+    """
+    log.info("Saving data to the database")
+    write_api = get_db_client().write_api(write_options=SYNCHRONOUS)
 
     points = []
     for index, row in df.iterrows():
@@ -22,9 +30,14 @@ def save_data_db(measurement, df):
 
 
 def get_full_data_db():
-    log.info("Downloading data from the database")
+    """
+    Gets the data from the database.
+    Returns:
+        pd.DataFrame: The data from the database.
+    """
+    log.info("Getting data from the database")
 
-    write_api = db_client.query_api()
+    write_api = get_db_client().query_api()
 
     # Collect all the data from the database and combine the cpu and gpu load.
     query = """from(bucket: "cluster_load")

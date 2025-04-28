@@ -1,9 +1,9 @@
+# Fix NP logs. This has to be done before NP import.
+import logging  # noqa
+
 import numpy as np
 from configs.config import HyperparameterConfig
 from configs.logging import log
-
-# Fix NP logs. This has to be done before NP import.
-import logging  # noqa
 
 logging.getLogger("NP.plotly").disabled = True  # noqa
 
@@ -19,10 +19,6 @@ from .core import Device, get_device_data
 model_config = HyperparameterConfig().get_config()
 
 
-# TimeSeries for CPU and GPU
-ts_dataframe_cpu = get_device_data(Device.CPU).copy()
-ts_dataframe_gpu = get_device_data(Device.GPU).copy()
-
 # NeuralProphet config to disable logs.
 set_log_level("CRITICAL")
 
@@ -31,6 +27,10 @@ FORECASTS_IN_ONE_DAY = 96
 
 
 def get_model():
+    # TimeSeries for CPU and GPU
+    ts_dataframe_cpu = get_device_data(Device.CPU).copy()
+    ts_dataframe_gpu = get_device_data(Device.GPU).copy()
+
     model_cpu = NeuralProphet(
         **model_config,
     )
@@ -50,9 +50,14 @@ def get_model():
 
     return model_cpu, model_gpu
 
+
 # Create_forecast creates a frame of future dates and fills
 # them based on the created model.
 def get_forecasts(model_cpu, model_gpu):
+    # TimeSeries for CPU and GPU
+    ts_dataframe_cpu = get_device_data(Device.CPU).copy()
+    ts_dataframe_gpu = get_device_data(Device.GPU).copy()
+
     forecasts_count = model_config["n_forecasts"]
 
     future_dataframe_cpu = model_cpu.make_future_dataframe(
@@ -85,7 +90,11 @@ def get_forecasts(model_cpu, model_gpu):
     forecasts_cpu = forecasts_cpu.clip(0, 100)
     forecasts_gpu = forecasts_gpu.clip(0, 100)
 
-    log.info("Forecasts were created. CPU_avg={:.2f}%, GPU_avg={:.2f}%", forecasts_cpu.mean(), forecasts_gpu.mean())
+    log.info(
+        "Forecasts were created. CPU_avg={:.2f}%, GPU_avg={:.2f}%",
+        forecasts_cpu.mean(),
+        forecasts_gpu.mean(),
+    )
 
     return forecasts_cpu, forecasts_gpu
 

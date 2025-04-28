@@ -6,3 +6,5 @@ __pycache__
 study.pkl
 .*
 test_http_*
+node_modules/
+package*

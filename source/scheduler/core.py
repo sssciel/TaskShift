@@ -1,13 +1,8 @@
-import signal
-import sys
 from datetime import datetime, timedelta
 
-from apscheduler.schedulers.blocking import BlockingScheduler
-from apscheduler.triggers.cron import CronTrigger
 from configs.config import ClusterConfig
-from forecaster.model import ForecastModel
-
 from configs.logging import log
+from forecaster.model import ForecastModel
 
 from .integration import (
     get_sessionid_pending_tasks_test,
@@ -26,6 +21,7 @@ forecast_model = None
 last_job = None
 next_monday = None
 
+
 # compute_forecasts creates and trains a forecasting model.
 def compute_forecasts():
     global next_monday
@@ -38,7 +34,7 @@ def compute_forecasts():
     # Calculate the date of the next Monday
     # Needed to compute the remaining time
     next_monday = (
-        datetime.now() + timedelta(days=7-datetime.now().weekday())
+        datetime.now() + timedelta(days=7 - datetime.now().weekday())
     ).replace(microsecond=0, second=0, minute=0, hour=0)
 
 
@@ -93,7 +89,7 @@ def task_scheduler():
 
         if (
             (cpu_used + cpu_load_req < available_cpu)
-            and (gpu_used + gpu_load_req < available_gpu) 
+            and (gpu_used + gpu_load_req < available_gpu)
             and (datetime.now() + timedelta(minutes=task["time_limit"]) < next_monday)
         ):
             log.debug(f"Try to start task {task["job_id"]}.")
@@ -104,33 +100,3 @@ def task_scheduler():
         else:
             log.debug(f"Can't run task {task['job_id']}. Moving to next task.")
             task_queue.put(task)
-
-
-def main():
-    scheduler = BlockingScheduler()
-
-    def shutdown(signum, frame):
-        scheduler.shutdown(wait=False)
-        sys.exit(0)
-
-    scheduler.add_job(
-        compute_forecasts,
-        trigger=CronTrigger(day_of_week="fri", hour=23, minute=32),
-        replace_existing=True,
-    )
-
-    scheduler.add_job(
-        task_scheduler,
-        trigger=CronTrigger(day_of_week="sat,sun", minute="*/10"),
-        replace_existing=True,
-    )
-
-    signal.signal(signal.SIGINT, shutdown)
-    signal.signal(signal.SIGTERM, shutdown)
-
-    try:
-        log.info("TaskShift is running.")
-        scheduler.start()
-    except (KeyboardInterrupt, SystemExit):
-        scheduler.shutdown()
-        sys.exit(0)

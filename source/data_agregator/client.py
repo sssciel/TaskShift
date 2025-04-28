@@ -13,4 +13,18 @@ bucket = os.getenv("INFLUXDB_BUCKET", "cluster_load")
 
 url = f"{host}:{port}"
 
-db_client = influxdb_client.InfluxDBClient(url=url, token=token, org=org)
+db_client = None
+
+
+def get_db_client():
+    """
+    Returns the InfluxDB client.
+    """
+    global db_client
+    if db_client is None:
+        db_client = influxdb_client.InfluxDBClient(
+            url=url,
+            token=token,
+            org=org,
+        )
+    return db_client
