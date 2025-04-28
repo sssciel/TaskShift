@@ -4,11 +4,8 @@ from configs.config import ClusterConfig
 from configs.logging import log
 from forecaster.model import ForecastModel
 
-from .integration import (
-    get_sessionid_pending_tasks_test,
-    get_sessionid_running_tasks_test,
-    run_task,
-)
+from .integration import (get_sessionid_pending_tasks_test,
+                          get_sessionid_running_tasks_test, run_task)
 from .utils import UniqueQueue
 
 task_queue = UniqueQueue()

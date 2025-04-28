@@ -1,10 +1,10 @@
 import os
-import pandas as pd
-import pytest
 from unittest.mock import MagicMock, patch
 
-import data_agregator.core as db_core
 import data_agregator.client as db_module
+import data_agregator.core as db_core
+import pandas as pd
+import pytest
 
 
 @pytest.fixture(autouse=True)
