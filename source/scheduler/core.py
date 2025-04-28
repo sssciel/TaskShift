@@ -18,6 +18,8 @@ forecast_model = None
 last_job = None
 next_monday = None
 
+OVERRIDE_CPU = None
+OVERRIDE_GPU = None
 
 # compute_forecasts creates and trains a forecasting model.
 def compute_forecasts():
@@ -54,8 +56,12 @@ def task_scheduler():
     elif datetime.now().weekday() == 6:  # sunday
         cpu_avg, gpu_avg = forecast_model.get_sunday_avg()
 
+    forecasted_cpu = 100 - cpu_avg
+    forecasted_gpu = 100 - gpu_avg
+
     # "Free" resources for the remaining time.
-    available_cpu, available_gpu = 100 - cpu_avg, 100 - gpu_avg
+    available_cpu = OVERRIDE_CPU if OVERRIDE_CPU is not None else forecasted_cpu
+    available_gpu = OVERRIDE_GPU if OVERRIDE_GPU is not None else forecasted_gpu
 
     # To track how many resources were consumed by tasks started by the scheduler.
     cpu_used, gpu_used = 0, 0
