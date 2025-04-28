@@ -1,0 +1,9 @@
+---
+  n_lags: 1
+  learning_rate: null
+  epochs: 1
+  batch_size: null
+  seasonality_reg: 0
+  n_changepoints: 10
+  trend_reg: 0
+  n_forecasts: 10

@@ -1,12 +1,16 @@
-import configs.config as config
-from pathlib import Path
-import pytest
 import os
+from pathlib import Path
+
+import configs.config as config
+import pytest
 from yaml import YAMLError
 
 DATA_DIR = Path(__file__).parent / "test_data"
 cfg_path_good = DATA_DIR / "yaml_good.yml"
 cfg_path_broken = DATA_DIR / "yaml_broken.yml"
+cfg_path_params = DATA_DIR / "yaml_params.yml"
+cfg_path_cluster = DATA_DIR / "yaml_cluster.yml"
+env_path_file = DATA_DIR / "env_file"
 
 
 def test_get_yaml_config_returns_expected_for_valid_yaml():
@@ -45,7 +49,7 @@ def test_get_yaml_config_various(path, service_name, default, expected, raises):
 
 
 def test_hyperparameter_config_class_behaviour():
-    hyperparams = config.HyperparameterConfig()
+    hyperparams = config.HyperparameterConfig(file=cfg_path_params)
 
     assert hyperparams.get_name() == "hyperparameter configuration file"
 
@@ -55,9 +59,7 @@ def test_hyperparameter_config_class_behaviour():
 
 
 def test_cluster_config():
-    cfg_file = DATA_DIR / "yaml_cluster.yml"
-
-    cc = config.ClusterConfig(cfg_file)
+    cc = config.ClusterConfig(file=cfg_path_cluster)
 
     assert cc.get_cluster_info() == {"foo": 123}
 
@@ -67,9 +69,7 @@ def test_cluster_config():
 
 
 def test_load_env_config_creates_env_vars():
-    env_file = DATA_DIR / ".env"
-
-    config.load_env_config(env_file)
+    config.load_env_config(file=env_path_file)
 
     assert os.getenv("FOO") == "BAR"
     assert os.getenv("BAR") == "42"

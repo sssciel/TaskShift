@@ -2,9 +2,9 @@ import json
 import os
 import time
 from enum import Enum
-from configs.logging import log
 
 import requests
+from configs.logging import log
 
 
 class TaskStates(Enum):
@@ -22,7 +22,7 @@ service_host = os.getenv("TASKMASTER_HOST")
 user_token = os.getenv("TASKMASTER_TOKEN", "")
 
 
-# get_url_from_dict create URL from filter dict 
+# get_url_from_dict create URL from filter dict
 def get_url_from_dict(query: dict):
     return "&".join(f"{k}={v}" for k, v in query.items())
 
@@ -45,10 +45,14 @@ def make_api_call(
             break
         else:
             error_count += 1
-            log.error(f"Request {request}.\nCan't connect to HPC TaskMaster. Retrying...")
+            log.error(
+                f"Request {request}.\nCan't connect to HPC TaskMaster. Retrying..."
+            )
             time.sleep(6)
     else:
-        log.critical(f"Request {request}.\nCan't connect to HPC TaskMaster. Aborted. Error: {response.text}")
+        log.critical(
+            f"Request {request}.\nCan't connect to HPC TaskMaster. Aborted. Error: {response.text}"
+        )
 
     return response
 
@@ -72,15 +76,17 @@ def get_pending_tasks():
 
 
 def run_task(jobid: str):
-    result = make_api_call(request=jobid, headers={"UserToken": user_token}).json()[
-        "results"
-    ]
+    return 1
+    # result = make_api_call(request=jobid, headers={"UserToken": user_token}).json()[
+    #     "results"
+    # ]
 
-    return result
+    # return result
 
 
 ## Test Zone
 ## TO DO: Remove these functions
+
 
 def get_sessionid_running_tasks_test():
     with open("test_http_query.json", encoding="UTF-8") as f:
@@ -102,6 +108,7 @@ def get_sessionid_pending_tasks_test():
         }
 
     return result
+
 
 # Test function that uses a user's cookie instead of a token.
 def get_sessionid_running_tasks():
