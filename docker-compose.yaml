@@ -1,9 +1,10 @@
-# compose.yaml
+version: '3.8'
+
 services:
   influxdb2:
     image: influxdb:2
     ports:
-      - 8086:8086
+      - "8086:8086"
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
       DOCKER_INFLUXDB_INIT_USERNAME_FILE: /run/secrets/influxdb2-admin-username
@@ -16,12 +17,26 @@ services:
       - influxdb2-admin-password
       - influxdb2-admin-token
     volumes:
-      - type: volume
-        source: influxdb2-data
-        target: /var/lib/influxdb2
-      - type: volume
-        source: influxdb2-config
-        target: /etc/influxdb2
+      - influxdb2-data:/var/lib/influxdb2
+      - influxdb2-config:/etc/influxdb2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: always
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      influxdb2:
+        condition: service_healthy
+    restart: always
+    ports:
+      - "127.0.0.1:8000:8000"
+
 secrets:
   influxdb2-admin-username:
     file: ~/.env.influxdb2-admin-username
@@ -29,6 +44,7 @@ secrets:
     file: ~/.env.influxdb2-admin-password
   influxdb2-admin-token:
     file: ~/.env.influxdb2-admin-token
+
 volumes:
   influxdb2-data:
   influxdb2-config:
