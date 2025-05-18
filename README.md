@@ -4,7 +4,7 @@ Subsystem of dynamic task launch for the "HPC TaskMaster".
 
 ## Description
 
-**TaskShift** is designed to increase the utilization efficiency of a supercomputer cluster managed by the SLURM scheduler — particularly for the **cHARISMa** supercomputer at the Higher School of Economics (HSE).
+**TaskShift** is designed to increase the utilization efficiency of a supercomputer cluster managed by the SLURM — particularly for the **cHARISMa** supercomputer at the Higher School of Economics (HSE).
 
 The system operates as a background service (daemon), triggered via a cron-like timer. Every Friday, it trains a forecasting model using **NeuralProphet**, and throughout the weekend it periodically evaluates the predicted load to decide whether to promote specific tasks for early execution.
 
