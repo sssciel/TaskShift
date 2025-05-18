@@ -23,25 +23,6 @@ cd TaskShift
 ```bash
 docker-compose up --build
 ```
-### Manual installation
-1. Install ``InfluxDB v2`` and ``make`` manually or via your package manager.
-2. Clone repository
-```bash
-git clone https://github.com/sssciel/TaskShift.git
-cd TaskShift
-```
-3. Install pip dependencies using Python 3.12.7. You can use pyenv and venv
-```bash
-pyenv install 3.12.7 && pyenv local 3.12.7
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-4. Configure service with .yml and .env files under ``source/configs`` folder.
-5. Run the prophet using make file
-```shell
-make
-```
 
 ### After installation
 1. Save load data to InfluxDB to selected in .env file bucket. It must has ``cpu_load`` and ``gpu_load`` measurement names.
