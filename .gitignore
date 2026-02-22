@@ -1,4 +1,4 @@
-env
+.env.local
 data/
 note_test*
 __pycache__
