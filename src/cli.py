@@ -198,15 +198,11 @@ def main():
             return 2
 
         if args.command == "schedule":
-            run_schedule(args)
+            run_scheduler_service(args)
             return 0
 
         if args.command == "run-scheduler-once":
             run_scheduler_once(args)
-            return 0
-
-        if args.command == "run-scheduler-service":
-            run_scheduler_service(args)
             return 0
 
         if args.command == "refresh-cluster-config":
