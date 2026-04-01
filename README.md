@@ -1,39 +1,31 @@
-# TaskShift
-Subsystem of dynamic task launch for the "HPC TaskMaster".
+## TaskShift
 
+Python version: `3.11.12`
 
-## Description
+### Docker
 
-**TaskShift** is designed to increase the utilization efficiency of a supercomputer cluster managed by the SLURM — particularly for the **cHARISMa** supercomputer at the Higher School of Economics (HSE).
+Build and run the scheduler loop:
 
-The system operates as a background service (daemon), triggered via a cron-like timer. Every Friday, it trains a forecasting model using **NeuralProphet**, and throughout the weekend it periodically evaluates the predicted load to decide whether to promote specific tasks for early execution.
-
-
-## Installation
-Choose either Docker-based deployment or manual setup.
-### Via Docker
-1. Clone repository
 ```bash
-git clone https://github.com/sssciel/TaskShift.git
-cd TaskShift
+docker compose up --build
 ```
-2. Configure service with .yml and .env files in ``source/configs`` folder.
-3. (Optional) Remove the influxdb service from docker-compose.yml if using an external InfluxDB host.
-4. Run docker-compose
+
+Run a one-off scheduler pass:
+
 ```bash
-docker-compose up --build
+docker compose run --rm taskshift run-scheduler-once
 ```
 
-### After installation
-1. Save load data to InfluxDB to selected in .env file bucket. It must has ``cpu_load`` and ``gpu_load`` measurement names.
-2. Wait for Friday or adjust the timer time in the main file yourself.
+Run historical export:
 
-## Test
-- With manual installation, tests are automatically run via make.
-- For Docker:
-```shell
-docker-compose exec python-service pytest
+```bash
+docker compose run --rm taskshift export --output-dir=/app/exports/historical_utilization/current
 ```
 
-## API
-You can disable the service and change the predicted workload while the scheduler is running. For this, the REST API is used from the host where the service is running, other connections are ignored.
+The container uses:
+
+- [configs](/Users/ciel/study/hpc2026/repo/TaskShift/configs) for configuration files
+- [logs](/Users/ciel/study/hpc2026/repo/TaskShift/logs) for append-only logs
+- [exports](/Users/ciel/study/hpc2026/repo/TaskShift/exports) for generated historical series
+
+If a real config file is missing, the container bootstraps it from the corresponding `*.example` file.

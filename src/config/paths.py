@@ -1,0 +1,5 @@
+DBConfigFile = "configs/.env"
+schedulerConfigFile = "configs/scheduler.yaml"
+serverConfigFile = "configs/server.yaml"
+clusterConfigFile = "configs/cluster.yaml"
+academicCalendarRoot = "configs/calendar"

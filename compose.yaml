@@ -1,0 +1,16 @@
+services:
+  taskshift:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: taskshift:local
+    container_name: taskshift
+    restart: unless-stopped
+    command:
+      - schedule
+      - --forecast-data-dir=/app/exports/historical_utilization/current
+    volumes:
+      - ./configs:/app/configs
+      - ./logs:/app/logs
+      - ./exports:/app/exports
+

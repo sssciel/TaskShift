@@ -1,0 +1,37 @@
+gres_types:
+  - gpu
+
+node_groups:
+  - name_pattern: cn-[001-002]
+    node_count: 2
+    weight: 1
+    features:
+      - type_a
+    resources:
+      sockets: 2
+      cores_per_socket: 16
+      threads_per_core: 1
+      gpus: 4
+
+  - name_pattern: cn-[003-004]
+    node_count: 2
+    weight: 2
+    features:
+      - type_b
+    resources:
+      sockets: 2
+      cores_per_socket: 32
+      threads_per_core: 1
+      gpus: 8
+
+partitions:
+  - name: normal
+    nodes: cn-[001-004]
+    state: UP
+    max_cpus_per_node: 64
+
+  - name: gpu-quick
+    nodes: cn-[003-004]
+    state: UP
+    max_cpus_per_node: 64
+    max_nodes: 1
