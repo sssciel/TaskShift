@@ -2,8 +2,8 @@ import logging
 import os
 import signal
 import subprocess
-import sys
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 
 try:
@@ -21,7 +21,7 @@ SCHEDULER_JOB_ID = "taskshift-scheduler"
 
 def start_scheduler_service_process(
     projectRoot: str,
-    forecastDataDir: str | None = None,
+    withoutForecast: bool = False,
     maxLaunchedJobs: int | None = None,
 ) -> int:
     projectPath = Path(projectRoot).resolve()
@@ -34,7 +34,7 @@ def start_scheduler_service_process(
 
     command = build_scheduler_service_command(
         projectRoot=projectPath,
-        forecastDataDir=forecastDataDir,
+        withoutForecast=withoutForecast,
         maxLaunchedJobs=maxLaunchedJobs,
     )
 
@@ -101,10 +101,11 @@ def run_scheduler_service_loop(
     jobRunner,
     projectRoot: str,
     runImmediately: bool = False,
+    schedulerController=None,
 ):
     try:
         from apscheduler.schedulers.blocking import BlockingScheduler
-        from apscheduler.triggers.cron import CronTrigger
+        from apscheduler.triggers.interval import IntervalTrigger
     except ModuleNotFoundError as error:
         raise ModuleNotFoundError("apscheduler is required to run the background scheduler service.") from error
 
@@ -114,14 +115,26 @@ def run_scheduler_service_loop(
     write_scheduler_pid_file(projectPath, pid)
 
     scheduler = BlockingScheduler()
+    nextRunAt = datetime.now() + timedelta(minutes=SCHEDULER_INTERVAL_MINUTES)
+    scheduledJobRunner = jobRunner
+    if schedulerController is not None:
+        scheduledJobRunner = schedulerController.run_scheduled_tick
+        schedulerController.bind_scheduler(
+            scheduler=scheduler,
+            schedulerJobId=SCHEDULER_JOB_ID,
+            pid=pid,
+            nextRunAt=nextRunAt,
+        )
+
     scheduler.add_job(
-        jobRunner,
-        trigger=CronTrigger(minute=f"*/{SCHEDULER_INTERVAL_MINUTES}"),
+        scheduledJobRunner,
+        trigger=IntervalTrigger(minutes=SCHEDULER_INTERVAL_MINUTES),
         id=SCHEDULER_JOB_ID,
         replace_existing=True,
         coalesce=True,
         max_instances=1,
         misfire_grace_time=SCHEDULER_INTERVAL_MINUTES * 60,
+        next_run_time=nextRunAt,
     )
 
     def handle_stop(signum, frame):
@@ -137,9 +150,14 @@ def run_scheduler_service_loop(
             f"Interval: every {SCHEDULER_INTERVAL_MINUTES} minutes"
         )
         if runImmediately:
-            jobRunner()
+            if schedulerController is not None:
+                schedulerController.run_startup_tick()
+            else:
+                jobRunner()
         scheduler.start()
     finally:
+        if schedulerController is not None:
+            schedulerController.mark_service_stopped()
         cleanup_scheduler_pid_file(projectPath, pid)
 
 
@@ -151,15 +169,15 @@ def ensure_scheduler_runtime_dirs(projectRoot: str | Path):
 
 def build_scheduler_service_command(
     projectRoot: str | Path,
-    forecastDataDir: str | None = None,
+    withoutForecast: bool = False,
     maxLaunchedJobs: int | None = None,
 ) -> list[str]:
     projectPath = Path(projectRoot).resolve()
     taskshiftPath = projectPath / "taskshift"
-    command = [get_default_python_executable(projectPath), str(taskshiftPath), "run-scheduler-service"]
+    command = ["/bin/sh", str(taskshiftPath), "schedule"]
 
-    if forecastDataDir:
-        command.append(f"--forecast-data-dir={str(Path(forecastDataDir).resolve())}")
+    if withoutForecast:
+        command.append("--without-forecast")
 
     if maxLaunchedJobs is not None:
         command.append(f"--max-launched-jobs={int(maxLaunchedJobs)}")
@@ -263,15 +281,6 @@ def is_process_running(pid: int) -> bool:
 
 def get_default_project_root() -> str:
     return str(Path(__file__).resolve().parents[2])
-
-
-def get_default_python_executable(projectRoot: str | Path) -> str:
-    projectPath = Path(projectRoot).resolve()
-    venvPython = projectPath / ".venv" / "bin" / "python"
-    if venvPython.exists():
-        return str(venvPython)
-
-    return os.path.realpath(sys.executable)
 
 
 def get_scheduler_pid_file(projectRoot: str | Path) -> Path:

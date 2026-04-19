@@ -1,5 +1,6 @@
 import os
 import re
+import shlex
 import subprocess
 from dataclasses import dataclass
 
@@ -89,6 +90,7 @@ class ClusterConfig:
         self.node_groups = []
         self.partitions = []
         self._node_features_cache = None
+        self._node_capacities_cache = None
 
     def loadConfig(self, filePath):
         if not os.path.exists(filePath):
@@ -134,6 +136,7 @@ class ClusterConfig:
             for partition in config.get("partitions", [])
         ]
         self._node_features_cache = None
+        self._node_capacities_cache = None
         return self
 
     def loadFromSlurmText(self, slurmConfigText: str):
@@ -144,6 +147,7 @@ class ClusterConfig:
         self.node_groups = []
         self.partitions = []
         self._node_features_cache = None
+        self._node_capacities_cache = None
 
         for line in nodesSection:
             if line.startswith("GresTypes="):
@@ -161,7 +165,7 @@ class ClusterConfig:
 
     def loadFromCommand(self, command=None):
         if command is None:
-            command = ["cat", "/etc/slurm/slurm.conf"]
+            command = ["cat", "/Users/ciel/study/hpc2026/repo/config_tmp.conf"]
 
         result = subprocess.run(
             command,
@@ -209,6 +213,37 @@ class ClusterConfig:
                 capacities.setdefault(feature, {"cpu": 0, "gpu": 0})
                 capacities[feature]["cpu"] += activeNodeCount * node_group.resources.cpu_cores
                 capacities[feature]["gpu"] += activeNodeCount * node_group.resources.gpus
+
+        return capacities
+
+    def getClusterCapacitiesAt(self, timestamp: int) -> dict[str, int]:
+        capacities = {"cpu": 0, "gpu": 0}
+
+        for node_group in self.node_groups:
+            activeNodeCount = node_group.get_node_count_at(timestamp)
+            if activeNodeCount <= 0:
+                continue
+
+            capacities["cpu"] += activeNodeCount * node_group.resources.cpu_cores
+            capacities["gpu"] += activeNodeCount * node_group.resources.gpus
+
+        return capacities
+
+    def getClusterCapacitiesForFeaturesAt(self, timestamp: int, featureNames: set[str]) -> dict[str, int]:
+        capacities = {"cpu": 0, "gpu": 0}
+        if not featureNames:
+            return capacities
+
+        for node_group in self.node_groups:
+            if not set(node_group.features).intersection(featureNames):
+                continue
+
+            activeNodeCount = node_group.get_node_count_at(timestamp)
+            if activeNodeCount <= 0:
+                continue
+
+            capacities["cpu"] += activeNodeCount * node_group.resources.cpu_cores
+            capacities["gpu"] += activeNodeCount * node_group.resources.gpus
 
         return capacities
 
@@ -276,6 +311,43 @@ class ClusterConfig:
 
         return featureCounts
 
+    def getFeatureCapacitiesForHostlist(self, hostlist: str) -> dict[str, dict[str, int]]:
+        featureCapacities = {}
+        nodeCapacitiesMap = self._get_node_capacities_map()
+
+        for nodeName in expand_hostlist(hostlist):
+            nodeCapacity = nodeCapacitiesMap.get(nodeName)
+            if nodeCapacity is None:
+                continue
+
+            for feature in nodeCapacity["features"]:
+                featureCapacities.setdefault(feature, {"nodes": 0, "cpu": 0, "gpu": 0})
+                featureCapacities[feature]["nodes"] += 1
+                featureCapacities[feature]["cpu"] += nodeCapacity["cpu"]
+                featureCapacities[feature]["gpu"] += nodeCapacity["gpu"]
+
+        return featureCapacities
+
+    def getNodeCapacitiesForHostlist(self, hostlist: str, timestamp: int | None = None) -> dict[str, dict]:
+        if timestamp is None:
+            sourceCapacities = self._get_node_capacities_map()
+        else:
+            sourceCapacities = self.getNodeCapacitiesAt(timestamp)
+
+        hostlistCapacities = {}
+        for nodeName in expand_hostlist(hostlist):
+            nodeCapacity = sourceCapacities.get(nodeName)
+            if nodeCapacity is None:
+                continue
+
+            hostlistCapacities[nodeName] = {
+                "features": list(nodeCapacity["features"]),
+                "cpu": nodeCapacity["cpu"],
+                "gpu": nodeCapacity["gpu"],
+            }
+
+        return hostlistCapacities
+
     def _get_node_features_map(self) -> dict[str, list[str]]:
         if self._node_features_cache is not None:
             return self._node_features_cache
@@ -286,6 +358,21 @@ class ClusterConfig:
                 self._node_features_cache[nodeName] = list(node_group.features)
 
         return self._node_features_cache
+
+    def _get_node_capacities_map(self) -> dict[str, dict]:
+        if self._node_capacities_cache is not None:
+            return self._node_capacities_cache
+
+        self._node_capacities_cache = {}
+        for node_group in self.node_groups:
+            for nodeName in expand_hostlist(node_group.name_pattern):
+                self._node_capacities_cache[nodeName] = {
+                    "features": list(node_group.features),
+                    "cpu": node_group.resources.cpu_cores,
+                    "gpu": node_group.resources.gpus,
+                }
+
+        return self._node_capacities_cache
 
     def _node_group_to_dict(self, node_group: NodeGroupConfig) -> dict:
         result = {
@@ -438,6 +525,67 @@ class ClusterConfig:
         return total
 
 
+class ServerConfig:
+    DEFAULT_HOST = "127.0.0.1"
+    DEFAULT_PORT = 8000
+
+    def __init__(self):
+        self.host = self.DEFAULT_HOST
+        self.port = self.DEFAULT_PORT
+
+    def loadConfig(self, filePath):
+        if not os.path.exists(filePath):
+            return self
+
+        with open(filePath, "r", encoding="utf-8") as file:
+            config = get_yaml_module().safe_load(file) or {}
+
+        self.host = config.get("host", self.DEFAULT_HOST)
+        self.port = int(config.get("port", self.DEFAULT_PORT))
+        return self
+
+    def saveConfig(self, filePath):
+        with open(filePath, "w", encoding="utf-8") as file:
+            get_yaml_module().safe_dump(
+                self.to_dict(),
+                file,
+                sort_keys=False,
+                allow_unicode=False,
+            )
+
+        return self
+
+    def to_dict(self) -> dict:
+        return {
+            "host": self.host,
+            "port": self.port,
+        }
+
+
+class AdminPanelAccessConfig:
+    def __init__(self):
+        self.token = None
+
+    def loadConfig(self, filePath):
+        from dotenv import dotenv_values
+
+        if not os.path.exists(filePath):
+            raise FileNotFoundError(
+                f"Configuration file '{filePath}' not found. Please create it using .env.example as a template."
+            )
+
+        config = dotenv_values(filePath)
+        token = config.get("ADMIN_PANEL_TOKEN")
+        self.token = token.strip() if token else None
+        return self
+
+    def requireToken(self) -> str:
+        if not self.token:
+            raise ValueError("ADMIN_PANEL_TOKEN is not configured in configs/.env")
+
+        return self.token
+
+
 class DBConfig:
     def __init__(self):
         self.host = None
@@ -470,9 +618,22 @@ class DBConfig:
 
 
 class SchedulerConfig:
+    DEFAULT_FORECAST_ENABLED = False
+    DEFAULT_FORECAST_DATA_DIR = "exports/historical_utilization/current"
+    DEFAULT_CLUSTER_CONFIG_SNAPSHOT_INTERVAL_HOURS = 24
+    DEFAULT_WEB_PANEL_ENABLED = True
+    DEFAULT_HOT_RELOAD_ENABLED = False
+    DEFAULT_CLUSTER_CONFIG_REFRESH_COMMAND = ["cat", "/etc/slurm/slurm.conf"]
+
     def __init__(self):
         self.timelimit = None
         self.max_launched_jobs = None
+        self.forecast_enabled = self.DEFAULT_FORECAST_ENABLED
+        self.forecast_data_dir = self.DEFAULT_FORECAST_DATA_DIR
+        self.cluster_config_snapshot_interval_hours = self.DEFAULT_CLUSTER_CONFIG_SNAPSHOT_INTERVAL_HOURS
+        self.web_panel_enabled = self.DEFAULT_WEB_PANEL_ENABLED
+        self.hot_reload_enabled = self.DEFAULT_HOT_RELOAD_ENABLED
+        self.cluster_config_refresh_command = list(self.DEFAULT_CLUSTER_CONFIG_REFRESH_COMMAND)
 
     def loadConfig(self, filePath):
         if not os.path.exists(filePath):
@@ -485,4 +646,81 @@ class SchedulerConfig:
 
         self.timelimit = config["timelimit"]
         self.max_launched_jobs = config.get("max_launched_jobs")
+        self.forecast_enabled = config.get("forecast_enabled", self.DEFAULT_FORECAST_ENABLED)
+        self.forecast_data_dir = config.get("forecast_data_dir", self.DEFAULT_FORECAST_DATA_DIR)
+        self.cluster_config_snapshot_interval_hours = config.get(
+            "cluster_config_snapshot_interval_hours",
+            self.DEFAULT_CLUSTER_CONFIG_SNAPSHOT_INTERVAL_HOURS,
+        )
+        self.web_panel_enabled = config.get("web_panel_enabled", self.DEFAULT_WEB_PANEL_ENABLED)
+        self.hot_reload_enabled = config.get("hot_reload_enabled", self.DEFAULT_HOT_RELOAD_ENABLED)
+        self.cluster_config_refresh_command = self._normalize_command(
+            config.get("cluster_config_refresh_command", self.DEFAULT_CLUSTER_CONFIG_REFRESH_COMMAND)
+        )
         return self
+
+    def saveConfig(self, filePath):
+        with open(filePath, "w", encoding="utf-8") as file:
+            get_yaml_module().safe_dump(
+                self.to_dict(),
+                file,
+                sort_keys=False,
+                allow_unicode=False,
+            )
+
+        return self
+
+    def to_dict(self) -> dict:
+        result = {
+            "timelimit": self.timelimit,
+        }
+
+        if self.max_launched_jobs is not None:
+            result["max_launched_jobs"] = self.max_launched_jobs
+
+        if self.forecast_enabled is not None:
+            result["forecast_enabled"] = bool(self.forecast_enabled)
+
+        if self.forecast_data_dir is not None:
+            result["forecast_data_dir"] = self.forecast_data_dir
+
+        if self.cluster_config_snapshot_interval_hours is not None:
+            result["cluster_config_snapshot_interval_hours"] = self.cluster_config_snapshot_interval_hours
+
+        if self.web_panel_enabled is not None:
+            result["web_panel_enabled"] = bool(self.web_panel_enabled)
+
+        if self.hot_reload_enabled is not None:
+            result["hot_reload_enabled"] = bool(self.hot_reload_enabled)
+
+        if self.cluster_config_refresh_command:
+            result["cluster_config_refresh_command"] = list(self.cluster_config_refresh_command)
+
+        return result
+
+    def copy(self):
+        clone = SchedulerConfig()
+        clone.timelimit = self.timelimit
+        clone.max_launched_jobs = self.max_launched_jobs
+        clone.forecast_enabled = self.forecast_enabled
+        clone.forecast_data_dir = self.forecast_data_dir
+        clone.cluster_config_snapshot_interval_hours = self.cluster_config_snapshot_interval_hours
+        clone.web_panel_enabled = self.web_panel_enabled
+        clone.hot_reload_enabled = self.hot_reload_enabled
+        clone.cluster_config_refresh_command = list(self.cluster_config_refresh_command)
+        return clone
+
+    def _normalize_command(self, commandValue):
+        if commandValue is None:
+            return list(self.DEFAULT_CLUSTER_CONFIG_REFRESH_COMMAND)
+
+        if isinstance(commandValue, str):
+            return shlex.split(commandValue)
+
+        if isinstance(commandValue, (list, tuple)):
+            normalized = [str(part).strip() for part in commandValue if str(part).strip()]
+            if not normalized:
+                raise ValueError("cluster_config_refresh_command must not be empty")
+            return normalized
+
+        raise ValueError("cluster_config_refresh_command must be either a shell string or a YAML list")

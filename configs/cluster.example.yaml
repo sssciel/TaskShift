@@ -1,12 +1,23 @@
+# Example parsed cluster snapshot used by the scheduler and by the admin panel tree view.
+# In normal operation this file is generated from live `slurm.conf`, but keeping an example here
+# makes the structure explicit and gives a template for manual editing.
+
+# Supported generic resource types declared in Slurm (`GresTypes=...`).
 gres_types:
   - gpu
 
+# Each group describes a hostlist pattern, feature tags and per-node resources.
+# Optional field `history` may be added later to describe node count changes over time.
 node_groups:
   - name_pattern: cn-[001-002]
+    # Number of nodes represented by this hostlist pattern.
     node_count: 2
+    # Placement preference. Larger weight usually means lower scheduling priority.
     weight: 1
+    # Feature labels matched against job constraints.
     features:
       - type_a
+    # Resources available on one node from this group.
     resources:
       sockets: 2
       cores_per_socket: 16
@@ -24,14 +35,18 @@ node_groups:
       threads_per_core: 1
       gpus: 8
 
+# Slurm partitions visible to the scheduler.
 partitions:
   - name: normal
+    # Hostlist available inside this partition.
     nodes: cn-[001-004]
     state: UP
+    # Optional per-node CPU cap enforced by the scheduler for this partition.
     max_cpus_per_node: 64
 
   - name: gpu-quick
     nodes: cn-[003-004]
     state: UP
     max_cpus_per_node: 64
+    # Optional cap on the number of nodes that may be allocated in this partition.
     max_nodes: 1

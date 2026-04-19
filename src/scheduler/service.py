@@ -8,15 +8,28 @@ except ModuleNotFoundError:
     logger = logging.getLogger(__name__)
     logger.success = logger.info
 
-from config import append_job_launch_event, build_job_launch_event, getClusterConfig, getSchedulerConfig
+from config import (
+    JOB_LAUNCH_STATUS_ATTEMPTED,
+    JOB_LAUNCH_STATUS_FAILED,
+    JOB_LAUNCH_STATUS_LEFT_PENDING_QUEUE,
+    append_job_launch_event,
+    build_job_launch_event,
+    getClusterConfig,
+    getSchedulerConfig,
+)
 from forecast import ForecastService
-from .attempt_cache import load_launch_attempts, save_launch_attempts
+from .attempt_cache import (
+    load_failed_job_pool,
+    load_launch_attempts,
+    save_failed_job_pool,
+    save_launch_attempts,
+)
 from .resources import ResourceAvailabilityTree
 
 
 class Scheduler:
-    def __init__(self, storage, connector, forecastDataDir: str | None = None):
-        self.config = getSchedulerConfig()
+    def __init__(self, storage, connector, forecastDataDir: str | None = None, schedulerConfig=None):
+        self.config = schedulerConfig or getSchedulerConfig()
         self.clusterConfig = getClusterConfig()
         self.forecastService = ForecastService(dataDir=forecastDataDir)
         self.storage = storage
@@ -25,7 +38,23 @@ class Scheduler:
     def schedule(self, maxLaunchedJobs: int | None = None):
         currentTimestamp = int(datetime.now().timestamp())
         jobs = self.storage.getPendingJobs()
-        self._reconcileLaunchAttempts(jobs, currentTimestamp)
+        pendingJobsSnapshot = [self._build_pending_job_payload(job) for job in jobs]
+        pendingJobsById = {entry["job_id"]: entry for entry in pendingJobsSnapshot}
+        failedJobPool = self._reconcileLaunchAttempts(jobs, currentTimestamp)
+        skippedByFailedAttemptCount = 0
+        if failedJobPool:
+            filteredJobs = []
+            for job in jobs:
+                if job.getID() in failedJobPool:
+                    skippedByFailedAttemptCount += 1
+                    pendingJobsById[job.getID()]["status"] = "BLOCKED_FAILED_POOL"
+                    pendingJobsById[job.getID()]["in_failed_attempt_pool"] = True
+                    continue
+
+                filteredJobs.append(job)
+
+            jobs = filteredJobs
+
         runningJobs = self.storage.getRunningJobs(currentTimestamp)
         resourceTree = ResourceAvailabilityTree.fromClusterAndJobs(
             clusterConfig=self.clusterConfig,
@@ -37,6 +66,7 @@ class Scheduler:
         skippedByResourcesCount = 0
         effectiveMaxLaunchedJobs = maxLaunchedJobs
         currentLaunchAttempts = []
+        attemptedJobIds = []
         if effectiveMaxLaunchedJobs is None:
             effectiveMaxLaunchedJobs = self.config.max_launched_jobs
 
@@ -47,15 +77,18 @@ class Scheduler:
 
             if job.getTimelimit() > self.config.timelimit:
                 skippedByTimelimitCount += 1
+                pendingJobsById[job.getID()]["status"] = "SKIPPED_TIMELIMIT"
                 continue
 
             placement = self._findRunnablePlacement(job, resourceTree, currentTimestamp)
             if placement is None:
                 skippedByResourcesCount += 1
+                pendingJobsById[job.getID()]["status"] = "SKIPPED_RESOURCES"
                 continue
 
             resourceTree.reservePlacement(placement)
             launchedJobsCount += 1
+            attemptedJobIds.append(job.getID())
             logger.info(
                 f"Executing job: {job.getID()} on feature {placement.featureName} "
                 f"using nodes {', '.join(placement.nodeNames)}"
@@ -65,37 +98,62 @@ class Scheduler:
                 job=job,
                 placement=placement,
                 launchTimestamp=currentTimestamp,
+                status=JOB_LAUNCH_STATUS_ATTEMPTED,
             )
             append_job_launch_event(launchEvent)
             currentLaunchAttempts.append(launchEvent)
+            pendingJobsById[job.getID()]["status"] = "ATTEMPTED"
+            pendingJobsById[job.getID()]["was_attempted"] = True
 
         save_launch_attempts(currentLaunchAttempts)
-        skippedTotalCount = skippedByTimelimitCount + skippedByResourcesCount
+        skippedTotalCount = skippedByTimelimitCount + skippedByResourcesCount + skippedByFailedAttemptCount
         logger.info(
             f"Scheduler pass finished: launched={launchedJobsCount}, skipped_total={skippedTotalCount}, "
-            f"skipped_by_timelimit={skippedByTimelimitCount}, skipped_by_resources={skippedByResourcesCount}"
+            f"skipped_by_timelimit={skippedByTimelimitCount}, skipped_by_resources={skippedByResourcesCount}, "
+            f"skipped_by_failed_attempt_pool={skippedByFailedAttemptCount}"
         )
+        return {
+            "pending_job_count": len(pendingJobsSnapshot),
+            "running_job_count": len(runningJobs),
+            "launched_count": launchedJobsCount,
+            "skipped_by_timelimit": skippedByTimelimitCount,
+            "skipped_by_resources": skippedByResourcesCount,
+            "skipped_by_failed_attempt_pool": skippedByFailedAttemptCount,
+            "failed_job_pool_size": len(failedJobPool),
+            "attempted_job_ids": attemptedJobIds,
+            "pending_jobs": pendingJobsSnapshot,
+            "effective_max_launched_jobs": effectiveMaxLaunchedJobs,
+        }
 
     def _reconcileLaunchAttempts(self, pendingJobs, timestamp: int):
         previousAttempts = load_launch_attempts()
+        failedJobPool = load_failed_job_pool()
         if not previousAttempts:
-            return
+            return failedJobPool
 
-        save_launch_attempts([])
         pendingJobIds = {job.getID() for job in pendingJobs}
         for attempt in previousAttempts:
             reconciledAttemptEvent = dict(attempt)
             reconciledAttemptEvent["checked_at_unix"] = timestamp
             reconciledAttemptEvent["checked_at"] = datetime.fromtimestamp(timestamp).isoformat(timespec="seconds")
 
-            if attempt.get("job_id") in pendingJobIds:
-                reconciledAttemptEvent["status"] = "FAILED"
+            jobId = attempt.get("job_id")
+            if jobId in pendingJobIds:
+                reconciledAttemptEvent["status"] = JOB_LAUNCH_STATUS_FAILED
                 reconciledAttemptEvent["reason"] = "job_still_pending_on_next_scheduler_tick"
+                try:
+                    failedJobPool.add(int(jobId))
+                except (TypeError, ValueError):
+                    pass
             else:
-                reconciledAttemptEvent["status"] = "SUCCEEDED"
+                reconciledAttemptEvent["status"] = JOB_LAUNCH_STATUS_LEFT_PENDING_QUEUE
                 reconciledAttemptEvent["reason"] = "job_missing_from_pending_queue_on_next_scheduler_tick"
 
             append_job_launch_event(reconciledAttemptEvent)
+
+        save_launch_attempts([])
+        save_failed_job_pool(failedJobPool)
+        return failedJobPool
 
     def _findRunnablePlacement(self, job, resourceTree, timestamp: int):
         partitionConfig = self.clusterConfig.getPartition(job.partition)
@@ -150,3 +208,18 @@ class Scheduler:
             return None
 
         return (requestedAmount / totalCapacity) * 100.0
+
+    def _build_pending_job_payload(self, job) -> dict:
+        return {
+            "job_id": job.getID(),
+            "job_name": job.jobName,
+            "partition": job.partition,
+            "constraints": job.constraints,
+            "requested_cpus": job.getRequestedCpus(),
+            "requested_gpus": job.getRequestedGpus(),
+            "requested_nodes": job.getRequestedNodes(),
+            "timelimit_minutes": job.getTimelimit(),
+            "status": "PENDING",
+            "was_attempted": False,
+            "in_failed_attempt_pool": False,
+        }

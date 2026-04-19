@@ -24,6 +24,8 @@ executing.log
 node_modules/
 package*
 
+cluster_backups/
+
 configs/.env
 configs/cluster.yaml
 configs/scheduler.yaml
