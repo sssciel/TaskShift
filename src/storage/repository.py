@@ -19,7 +19,7 @@ except ModuleNotFoundError:
 from config import getDBConfig
 
 from .constants import GET_ACTIVE_JOBS_BASE_QUERY, GET_HISTORICAL_JOBS_BASE_QUERY, GET_JOBS_WITH_STATE_QUERY
-from .models import HistoricalJob, Job
+from .models import HistoricalJob, Job, RawHistoricalJobRow
 
 
 class SlurmDBRepository:
@@ -37,12 +37,14 @@ class SlurmDBRepository:
         try:
             self.connection = mysql.connect(**self.config.getParameters())
         except mysql.Error as err:
+            self.connection = None
             if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
                 logger.critical("Something is wrong with your user name or password")
             elif err.errno == errorcode.ER_BAD_DB_ERROR:
                 logger.critical("Database does not exist")
             else:
                 logger.critical(err)
+            raise
 
         logger.success("Connection to slurmDB was created")
         return self
@@ -80,6 +82,14 @@ class SlurmDBRepository:
         modifiedFrom: int | None = None,
         modifiedUntil: int | None = None,
     ) -> list[HistoricalJob]:
+        return [row.toHistoricalJob() for row in self.get_historical_job_rows(modifiedAfter, modifiedFrom, modifiedUntil)]
+
+    def get_historical_job_rows(
+        self,
+        modifiedAfter: int | None = None,
+        modifiedFrom: int | None = None,
+        modifiedUntil: int | None = None,
+    ) -> list[RawHistoricalJobRow]:
         self._require_connection()
 
         result = []
@@ -99,7 +109,7 @@ class SlurmDBRepository:
             query += " AND mod_time <= %s"
             params.append(modifiedUntil)
 
-        query += " ORDER BY mod_time ASC, id_job ASC"
+        query += " ORDER BY mod_time ASC, job_db_inx ASC, id_job ASC"
         logger.debug(
             "Loading historical jobs for utilization aggregation"
             f" (modifiedAfter={modifiedAfter}, modifiedFrom={modifiedFrom}, modifiedUntil={modifiedUntil})"
@@ -108,28 +118,30 @@ class SlurmDBRepository:
 
         for row in cursor:
             result.append(
-                HistoricalJob(
-                    jobID=row[0],
-                    jobName=row[1],
-                    timelimit=row[2],
-                    state=row[3],
-                    priority=row[4],
-                    constraints=row[5],
-                    cpusReq=row[6] or 0,
-                    nodesAlloc=row[7] or 0,
-                    timeStart=row[8] or 0,
-                    timeEnd=row[9] or 0,
-                    timeSubmit=row[10] or 0,
-                    timeEligible=row[11] or 0,
-                    modTime=row[12] or 0,
-                    tresReq=row[13],
-                    nodelist=row[14],
-                    partition=row[15],
+                RawHistoricalJobRow(
+                    job_db_inx=row[0],
+                    id_job=row[1],
+                    job_name=row[2],
+                    timelimit=row[3],
+                    state=row[4],
+                    priority=row[5],
+                    constraints=row[6],
+                    cpus_req=row[7] or 0,
+                    nodes_alloc=row[8] or 0,
+                    time_start=row[9] or 0,
+                    time_end=row[10] or 0,
+                    time_submit=row[11] or 0,
+                    time_eligible=row[12] or 0,
+                    mod_time=row[13] or 0,
+                    tres_req=row[14],
+                    tres_alloc=row[15],
+                    nodelist=row[16],
+                    partition=row[17],
                 )
             )
 
         cursor.close()
-        logger.success(f"Got {len(result)} historical jobs")
+        logger.success(f"Got {len(result)} historical job rows")
         return result
 
     def get_active_jobs(self, nowTimestamp: int) -> list[HistoricalJob]:
@@ -137,7 +149,7 @@ class SlurmDBRepository:
 
         result = []
         cursor = self.connection.cursor()
-        query = GET_ACTIVE_JOBS_BASE_QUERY + " ORDER BY time_start ASC, id_job ASC"
+        query = GET_ACTIVE_JOBS_BASE_QUERY + " ORDER BY time_start ASC, job_db_inx ASC, id_job ASC"
 
         logger.debug(f"Loading active jobs at timestamp {nowTimestamp}")
         cursor.execute(query, (nowTimestamp,))
@@ -145,22 +157,24 @@ class SlurmDBRepository:
         for row in cursor:
             result.append(
                 HistoricalJob(
-                    jobID=row[0],
-                    jobName=row[1],
-                    timelimit=row[2],
-                    state=row[3],
-                    priority=row[4],
-                    constraints=row[5],
-                    cpusReq=row[6] or 0,
-                    nodesAlloc=row[7] or 0,
-                    timeStart=row[8] or 0,
-                    timeEnd=row[9] or 0,
-                    timeSubmit=row[10] or 0,
-                    timeEligible=row[11] or 0,
-                    modTime=row[12] or 0,
-                    tresReq=row[13],
-                    nodelist=row[14],
-                    partition=row[15],
+                    dbIndex=row[0],
+                    jobID=row[1],
+                    jobName=row[2],
+                    timelimit=row[3],
+                    state=row[4],
+                    priority=row[5],
+                    constraints=row[6],
+                    cpusReq=row[7] or 0,
+                    nodesAlloc=row[8] or 0,
+                    timeStart=row[9] or 0,
+                    timeEnd=row[10] or 0,
+                    timeSubmit=row[11] or 0,
+                    timeEligible=row[12] or 0,
+                    modTime=row[13] or 0,
+                    tresReq=row[14],
+                    tresAlloc=row[15],
+                    nodelist=row[16],
+                    partition=row[17],
                 )
             )
 

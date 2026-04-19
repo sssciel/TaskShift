@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from .models import HistoricalJob
+from .models import RawHistoricalJobRow
 from .timeutils import parse_time_value
 
 
@@ -19,19 +19,19 @@ def save_state(statePath: Path, state: dict):
         json.dump(state, file, indent=2, ensure_ascii=False)
 
 
-def load_cached_historical_jobs(rawJobsPath: Path) -> list[HistoricalJob]:
+def load_cached_historical_job_rows(rawJobsPath: Path) -> list[RawHistoricalJobRow]:
     if not rawJobsPath.exists():
         return []
 
     with open(rawJobsPath, "r", encoding="utf-8") as file:
         payload = json.load(file)
 
-    return [HistoricalJob.from_dict(item) for item in payload]
+    return [RawHistoricalJobRow.from_dict(item) for item in payload]
 
 
-def save_cached_historical_jobs(rawJobsPath: Path, jobs: list[HistoricalJob]):
+def save_cached_historical_job_rows(rawJobsPath: Path, rows: list[RawHistoricalJobRow]):
     with open(rawJobsPath, "w", encoding="utf-8") as file:
-        json.dump([job.to_dict() for job in jobs], file, indent=2, ensure_ascii=False)
+        json.dump([row.to_dict() for row in rows], file, indent=2, ensure_ascii=False)
 
 
 def resolve_history_start(historyStart, state: dict) -> int | None:
@@ -43,18 +43,18 @@ def resolve_history_start(historyStart, state: dict) -> int | None:
 
 def build_state_payload(
     previousState: dict,
-    mergedJobs: list[HistoricalJob],
+    mergedRows: list[RawHistoricalJobRow],
     historyStartTimestamp: int | None,
     modifiedUntilTimestamp: int | None,
 ) -> dict:
     lastModTime = max(
-        (job.modTime for job in mergedJobs),
+        (row.mod_time for row in mergedRows),
         default=previousState.get("last_mod_time", 0) if previousState else 0,
     )
     return {
         "history_start": historyStartTimestamp,
         "modified_until": modifiedUntilTimestamp,
         "last_mod_time": lastModTime,
-        "job_count": len(mergedJobs),
+        "job_count": len(mergedRows),
         "last_sync_at": datetime.now().isoformat(),
     }

@@ -15,6 +15,9 @@ LOG_FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 LOGURU_FORMAT = "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level} | {name}:{function}:{line} | {message}"
 LOG_FILE_NAME = "taskshift.log"
 JOB_LAUNCH_LOG_FILE_NAME = "job_launches.jsonl"
+JOB_LAUNCH_STATUS_ATTEMPTED = "LAUNCH_ATTEMPTED"
+JOB_LAUNCH_STATUS_FAILED = "LAUNCH_FAILED"
+JOB_LAUNCH_STATUS_LEFT_PENDING_QUEUE = "LEFT_PENDING_QUEUE"
 
 
 def _get_log_file_path() -> Path:
@@ -76,7 +79,7 @@ def build_job_launch_event(
     job,
     placement,
     launchTimestamp: int | None = None,
-    status: str = "ATTEMPTED",
+    status: str = JOB_LAUNCH_STATUS_ATTEMPTED,
 ):
     timestamp = launchTimestamp or int(datetime.now().timestamp())
     return {

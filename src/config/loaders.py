@@ -1,6 +1,17 @@
-from .calendar import AcademicCalendarConfig
-from .models import ClusterConfig, DBConfig, SchedulerConfig
-from .paths import DBConfigFile, academicCalendarRoot, clusterConfigFile, schedulerConfigFile
+from datetime import datetime
+from pathlib import Path
+import shutil
+
+from .calendar import AcademicCalendarConfig, ConferenceCalendarConfig
+from .models import AdminPanelAccessConfig, ClusterConfig, DBConfig, SchedulerConfig, ServerConfig
+from .paths import (
+    DBConfigFile,
+    academicCalendarRoot,
+    clusterConfigBackupRoot,
+    clusterConfigFile,
+    schedulerConfigFile,
+    serverConfigFile,
+)
 
 
 def getDBConfig():
@@ -11,13 +22,154 @@ def getSchedulerConfig():
     return SchedulerConfig().loadConfig(schedulerConfigFile)
 
 
+def getServerConfig():
+    return ServerConfig().loadConfig(serverConfigFile)
+
+
+def getAdminPanelAccessConfig():
+    return AdminPanelAccessConfig().loadConfig(DBConfigFile)
+
+
 def getClusterConfig():
-    return ClusterConfig().loadConfig(clusterConfigFile)
+    return ClusterConfig().loadConfig(getLatestClusterConfigFile())
 
 
 def getAcademicSchedule(year: int):
     return AcademicCalendarConfig(academicCalendarRoot).loadYear(year).toDataFrame()
 
 
+def getConferenceDates(year: int):
+    return ConferenceCalendarConfig(academicCalendarRoot).loadYear(year).toList()
+
+
 def refreshClusterConfig(command=None, filePath=clusterConfigFile):
-    return ClusterConfig().loadFromCommand(command).saveConfig(filePath)
+    clusterConfig = ClusterConfig().loadFromCommand(command)
+    clusterConfig.saveConfig(filePath)
+    backupPath = buildClusterConfigBackupPath()
+    backupPath.parent.mkdir(parents=True, exist_ok=True)
+    clusterConfig.saveConfig(backupPath)
+    return {
+        "current_file": str(Path(filePath)),
+        "backup_file": str(backupPath),
+    }
+
+
+def saveClusterConfigBackupFromFile(sourceFilePath: str | Path, timestamp: datetime | None = None) -> Path:
+    sourcePath = Path(sourceFilePath)
+    if not sourcePath.exists():
+        raise FileNotFoundError(f"Cluster config file not found for backup: {sourcePath}")
+
+    backupPath = buildClusterConfigBackupPath(timestamp=timestamp)
+    backupPath.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(sourcePath, backupPath)
+    return backupPath
+
+
+def refreshClusterConfigIfDue(
+    *,
+    command=None,
+    filePath=clusterConfigFile,
+    snapshotIntervalHours: int | float | None = None,
+    now: datetime | None = None,
+):
+    if snapshotIntervalHours is not None and snapshotIntervalHours <= 0:
+        return {
+            "refreshed": False,
+            "reason": "disabled",
+            "current_file": str(Path(filePath)),
+            "backup_file": None,
+            "latest_backup_file": None,
+            "latest_backup_at": None,
+        }
+
+    latestBackup = getLatestClusterConfigBackupFile()
+    effectiveNow = datetime.now() if now is None else now
+    latestBackupTimestamp = None
+    if latestBackup is not None and snapshotIntervalHours is not None:
+        latestBackupTimestamp = datetime.fromtimestamp(latestBackup.stat().st_mtime)
+        elapsedSeconds = (effectiveNow - latestBackupTimestamp).total_seconds()
+        if elapsedSeconds < float(snapshotIntervalHours) * 3600.0:
+            return {
+                "refreshed": False,
+                "reason": "window_not_elapsed",
+                "current_file": str(Path(filePath)),
+                "backup_file": str(latestBackup),
+                "latest_backup_file": str(latestBackup),
+                "latest_backup_at": latestBackupTimestamp.isoformat(timespec="seconds"),
+            }
+
+    try:
+        savedPaths = refreshClusterConfig(command=command, filePath=filePath)
+    except Exception as error:
+        currentFilePath = Path(filePath)
+        if latestBackup is not None:
+            return {
+                "refreshed": False,
+                "reason": "refresh_failed_using_latest_backup",
+                "current_file": str(currentFilePath),
+                "backup_file": str(latestBackup),
+                "latest_backup_file": str(latestBackup),
+                "latest_backup_at": latestBackupTimestamp.isoformat(timespec="seconds") if latestBackupTimestamp is not None else None,
+                "error": str(error),
+            }
+
+        if currentFilePath.exists():
+            backupPath = saveClusterConfigBackupFromFile(currentFilePath, timestamp=effectiveNow)
+            return {
+                "refreshed": False,
+                "reason": "refresh_failed_seeded_from_current_file",
+                "current_file": str(currentFilePath),
+                "backup_file": str(backupPath),
+                "latest_backup_file": str(latestBackup) if latestBackup is not None else None,
+                "latest_backup_at": latestBackupTimestamp.isoformat(timespec="seconds") if latestBackupTimestamp is not None else None,
+                "error": str(error),
+            }
+
+        raise
+
+    return {
+        "refreshed": True,
+        "reason": "missing_backup" if latestBackup is None else "window_elapsed",
+        "latest_backup_file": str(latestBackup) if latestBackup is not None else None,
+        "latest_backup_at": latestBackupTimestamp.isoformat(timespec="seconds") if latestBackupTimestamp is not None else None,
+        **savedPaths,
+    }
+
+
+def getLatestClusterConfigFile() -> str:
+    latestBackup = getLatestClusterConfigBackupFile()
+    if latestBackup is not None:
+        return str(latestBackup)
+
+    return clusterConfigFile
+
+
+def getLatestClusterConfigBackupFile() -> Path | None:
+    backupRoot = Path(clusterConfigBackupRoot)
+    backupFiles = sorted(
+        path
+        for path in backupRoot.rglob("*.yaml")
+        if path.is_file()
+    )
+    if not backupFiles:
+        return None
+
+    return backupFiles[-1]
+
+
+def buildClusterConfigBackupPath(timestamp: datetime | None = None) -> Path:
+    backupTimestamp = datetime.now() if timestamp is None else timestamp
+    return (
+        Path(clusterConfigBackupRoot)
+        / backupTimestamp.strftime("%Y")
+        / backupTimestamp.strftime("%m")
+        / backupTimestamp.strftime("%d")
+        / f"{backupTimestamp.strftime('%H%M%S')}.yaml"
+    )
+
+
+def setSchedulerForecastDataDir(dataDir: str, filePath: str = schedulerConfigFile):
+    schedulerConfig = getSchedulerConfig()
+    schedulerConfig.forecast_data_dir = dataDir
+    schedulerConfig.saveConfig(filePath)
+    return schedulerConfig

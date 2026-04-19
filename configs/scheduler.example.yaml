@@ -1,2 +1,31 @@
+# Example scheduler settings for TaskShift.
+# Copy this file to `configs/scheduler.yaml` and adjust it for the target environment.
+
+# Maximum allowed job time limit, in minutes. Jobs above this limit are skipped.
 timelimit: 600
+
+# Maximum number of jobs that may be launched in one scheduler pass.
 max_launched_jobs: 10
+
+# Enables forecast-aware scheduling without extra CLI flags.
+# Keep this `false` until the export pipeline and `forecast_data_dir` are configured.
+forecast_enabled: false
+
+# Directory with exported historical utilization data used by the forecast service.
+forecast_data_dir: exports/historical_utilization/current
+
+# Minimal age of the latest cluster snapshot before a new live refresh is attempted.
+# The refresh runs only when more than this many hours elapsed since the previous backup.
+cluster_config_snapshot_interval_hours: 24
+
+# Starts the admin web panel together with `taskshift schedule`.
+web_panel_enabled: true
+
+# Enables background hot reload for safe scheduler settings from this file.
+hot_reload_enabled: false
+
+# Command that prints the current Slurm config to stdout.
+# Replace with an SSH command if the scheduler runs outside the Slurm control host.
+cluster_config_refresh_command:
+  - cat
+  - /etc/slurm/slurm.conf
