@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TaskShift Admin</title>
+  <style>
+__LOGIN_CSS__
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="lang-row">
+      <select id="loginLanguageSelect">
+        <option value="ru">Русский</option>
+        <option value="en">English</option>
+      </select>
+    </div>
+    <div class="eyebrow" id="loginBadge">TaskShift Admin</div>
+    <h1 id="loginTitle">Cluster control room</h1>
+    <p id="loginDescription">Enter the admin access token from <code>configs/.env</code> to inspect the active cluster snapshot and edit config files.</p>
+    <form method="post" action="/login">
+      <div>
+        <label for="token" id="loginTokenLabel">Access token</label>
+        <input id="token" name="token" type="password" autocomplete="current-password" placeholder="ADMIN_PANEL_TOKEN" required>
+      </div>
+      <button type="submit" id="loginSubmitButton">Open panel</button>
+    </form>
+    <div class="error" id="loginError">__ERROR_MESSAGE__</div>
+  </div>
+  <script>
+__LOGIN_JS__
+  </script>
+</body>
+</html>
