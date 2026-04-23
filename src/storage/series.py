@@ -1,5 +1,6 @@
 import json
 import logging
+from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -11,7 +12,7 @@ except ModuleNotFoundError:
     logger = logging.getLogger(__name__)
     logger.success = logger.info
 
-from config import getClusterConfig
+from config import loadClusterConfigTimelineSnapshots
 from config.parsing import parse_timestamp
 
 from .timeutils import ceil_timestamp, floor_timestamp, format_timestamp
@@ -27,20 +28,88 @@ ANALYSIS_FORCED_START_TIMESTAMPS = {
 }
 
 
+class _ClusterConfigTimeline:
+    def __init__(self, snapshots: list[dict]):
+        if not snapshots:
+            raise ValueError("Cluster config timeline requires at least one snapshot")
+
+        self.snapshots = snapshots
+        self.timestamps = [int(snapshot["timestamp"]) for snapshot in snapshots]
+
+    @classmethod
+    def from_cluster_config(cls, clusterConfig):
+        return cls(
+            [
+                {
+                    "timestamp": 0,
+                    "kind": "static",
+                    "path": "<provided-cluster-config>",
+                    "config": clusterConfig,
+                }
+            ]
+        )
+
+    @classmethod
+    def load_default(cls, currentTimestamp: int | None = None):
+        return cls(loadClusterConfigTimelineSnapshots(currentTimestamp=currentTimestamp))
+
+    def getConfigAt(self, timestamp: int):
+        snapshotIndex = bisect_right(self.timestamps, int(timestamp)) - 1
+        if snapshotIndex < 0:
+            snapshotIndex = 0
+
+        return self.snapshots[snapshotIndex]["config"]
+
+    def iterSegments(self, startTimestamp: int, endTimestamp: int):
+        if endTimestamp <= startTimestamp:
+            return
+
+        boundaryStart = bisect_right(self.timestamps, int(startTimestamp))
+        boundaryEnd = bisect_left(self.timestamps, int(endTimestamp))
+        boundaries = [int(startTimestamp), *self.timestamps[boundaryStart:boundaryEnd], int(endTimestamp)]
+        for index in range(len(boundaries) - 1):
+            segmentStart = boundaries[index]
+            segmentEnd = boundaries[index + 1]
+            if segmentEnd <= segmentStart:
+                continue
+
+            yield segmentStart, segmentEnd, self.getConfigAt(segmentStart)
+
+    def getFeatureNames(self) -> list[str]:
+        featureNames = set()
+        for snapshot in self.snapshots:
+            featureNames.update(snapshot["config"].getFeatureNames())
+
+        return sorted(featureNames)
+
+
 def build_historical_utilization_series(
     jobs,
     clusterConfig=None,
     intervalMinutes: int = 15,
     nowTimestamp: int | None = None,
 ) -> dict[str, list[dict]]:
-    if clusterConfig is None:
-        clusterConfig = getClusterConfig()
-
     normalizedJobs = _normalize_historical_jobs(jobs)
     activeJobs = [job for job in normalizedJobs if job.hasStarted()]
     resolvedJobs = [job for job in activeJobs if job.hasAssignedNodes()]
     skippedJobsCount = len(activeJobs) - len(resolvedJobs)
-    featureNames = _get_analysis_feature_names(clusterConfig)
+
+    if nowTimestamp is None:
+        if not activeJobs:
+            nowTimestamp = int(datetime.now().timestamp())
+        else:
+            unfinishedJobs = [job for job in activeJobs if job.timeEnd <= 0]
+            if unfinishedJobs:
+                nowTimestamp = int(datetime.now().timestamp())
+            else:
+                nowTimestamp = max(max(job.timeStart, job.timeEnd, job.modTime) for job in activeJobs)
+
+    clusterConfigTimeline = (
+        _ClusterConfigTimeline.from_cluster_config(clusterConfig)
+        if clusterConfig is not None
+        else _ClusterConfigTimeline.load_default(currentTimestamp=nowTimestamp)
+    )
+    featureNames = _get_analysis_feature_names(clusterConfigTimeline)
 
     if skippedJobsCount > 0:
         logger.warning(
@@ -50,27 +119,20 @@ def build_historical_utilization_series(
     if not activeJobs:
         return {**{feature: [] for feature in featureNames}, "overall": []}
 
-    if nowTimestamp is None:
-        unfinishedJobs = [job for job in activeJobs if job.timeEnd <= 0]
-        if unfinishedJobs:
-            nowTimestamp = int(datetime.now().timestamp())
-        else:
-            nowTimestamp = max(max(job.timeStart, job.timeEnd, job.modTime) for job in activeJobs)
-
     intervalSeconds = intervalMinutes * 60
     featureLoads, jobDiagnostics = _build_feature_events(
         jobs=resolvedJobs,
-        clusterConfig=clusterConfig,
+        clusterConfigTimeline=clusterConfigTimeline,
         nowTimestamp=nowTimestamp,
         allowedFeatures=set(featureNames),
         forcedFeatureStartTimestamps=ANALYSIS_FORCED_START_TIMESTAMPS,
     )
     overallEvents = _build_overall_events(featureLoads)
-    featureCommissionTimestamps = _infer_feature_commission_timestamps(
-        featureEvents=featureLoads,
-        featureNames=featureNames,
-        forcedFeatureStartTimestamps=ANALYSIS_FORCED_START_TIMESTAMPS,
-    )
+    featureCommissionTimestamps = {
+        feature: ANALYSIS_FORCED_START_TIMESTAMPS[feature]
+        for feature in featureNames
+        if feature in ANALYSIS_FORCED_START_TIMESTAMPS
+    }
 
     if overallEvents:
         rangeStart = floor_timestamp(min(overallEvents.keys()), intervalSeconds)
@@ -83,7 +145,7 @@ def build_historical_utilization_series(
         series[feature] = _build_feature_series(
             feature=feature,
             featureEvents=featureLoads.get(feature, {}),
-            clusterConfig=clusterConfig,
+            clusterConfigTimeline=clusterConfigTimeline,
             rangeStart=rangeStart,
             rangeEnd=rangeEnd,
             intervalSeconds=intervalSeconds,
@@ -92,11 +154,12 @@ def build_historical_utilization_series(
 
     series["overall"] = _build_overall_series(
         overallEvents=overallEvents,
-        clusterConfig=clusterConfig,
+        clusterConfigTimeline=clusterConfigTimeline,
         rangeStart=rangeStart,
         rangeEnd=rangeEnd,
         intervalSeconds=intervalSeconds,
-        featureCommissionTimestamps=featureCommissionTimestamps,
+        allowedFeatures=set(featureNames),
+        forcedFeatureStartTimestamps=ANALYSIS_FORCED_START_TIMESTAMPS,
     )
 
     _log_job_diagnostics(jobDiagnostics)
@@ -155,7 +218,7 @@ def export_historical_utilization_series(
 
 def _build_feature_events(
     jobs,
-    clusterConfig,
+    clusterConfigTimeline,
     nowTimestamp: int,
     allowedFeatures: set[str] | None = None,
     forcedFeatureStartTimestamps: dict[str, int] | None = None,
@@ -168,37 +231,43 @@ def _build_feature_events(
 
     for job in jobs:
         endTimestamp = job.getEffectiveEnd(nowTimestamp)
-        if endTimestamp < job.timeStart:
+        if endTimestamp <= job.timeStart:
             continue
 
-        featureShares = _resolve_job_feature_resource_shares(
-            job=job,
-            clusterConfig=clusterConfig,
-            allowedFeatures=allowedFeatures,
-        )
-        if not featureShares:
-            diagnostics["jobs_with_unknown_nodes"] += 1
-            continue
-
-        allocatedCpus = job.getAllocatedCpus()
-        allocatedGpus = job.getAllocatedGpus()
-        for feature, shares in featureShares.items():
-            effectiveStart = max(job.timeStart, forcedFeatureStartTimestamps.get(feature, job.timeStart))
-            if endTimestamp <= effectiveStart:
+        resolvedAnySegment = False
+        for segmentStart, segmentEnd, segmentConfig in clusterConfigTimeline.iterSegments(job.timeStart, endTimestamp):
+            featureShares = _resolve_job_feature_resource_shares(
+                job=job,
+                clusterConfig=segmentConfig,
+                timestamp=segmentStart,
+                allowedFeatures=allowedFeatures,
+            )
+            if not featureShares:
                 continue
 
-            cpuDelta = float(allocatedCpus) * shares["cpu"]
-            gpuDelta = float(allocatedGpus) * shares["gpu"]
+            resolvedAnySegment = True
+            allocatedCpus = job.getAllocatedCpus()
+            allocatedGpus = job.getAllocatedGpus()
+            for feature, shares in featureShares.items():
+                effectiveStart = max(segmentStart, forcedFeatureStartTimestamps.get(feature, segmentStart))
+                if segmentEnd <= effectiveStart:
+                    continue
 
-            featureEvents[feature][effectiveStart]["cpu"] += cpuDelta
-            featureEvents[feature][effectiveStart]["gpu"] += gpuDelta
-            featureEvents[feature][endTimestamp]["cpu"] -= cpuDelta
-            featureEvents[feature][endTimestamp]["gpu"] -= gpuDelta
+                cpuDelta = float(allocatedCpus) * shares["cpu"]
+                gpuDelta = float(allocatedGpus) * shares["gpu"]
+
+                featureEvents[feature][effectiveStart]["cpu"] += cpuDelta
+                featureEvents[feature][effectiveStart]["gpu"] += gpuDelta
+                featureEvents[feature][segmentEnd]["cpu"] -= cpuDelta
+                featureEvents[feature][segmentEnd]["gpu"] -= gpuDelta
+
+        if not resolvedAnySegment:
+            diagnostics["jobs_with_unknown_nodes"] += 1
 
     return featureEvents, diagnostics
 
 
-def _build_feature_series(feature, featureEvents, clusterConfig, rangeStart, rangeEnd, intervalSeconds, commissionTimestamp=None):
+def _build_feature_series(feature, featureEvents, clusterConfigTimeline, rangeStart, rangeEnd, intervalSeconds, commissionTimestamp=None):
     sortedEventTimestamps = sorted(featureEvents.keys())
     eventIndex = 0
     currentCpuLoad = 0.0
@@ -215,7 +284,10 @@ def _build_feature_series(feature, featureEvents, clusterConfig, rangeStart, ran
         if commissionTimestamp is not None and timestamp < commissionTimestamp:
             capacities = {"cpu": 0, "gpu": 0}
         else:
-            capacities = clusterConfig.getFeatureCapacitiesAt(timestamp).get(feature, {"cpu": 0, "gpu": 0})
+            capacities = clusterConfigTimeline.getConfigAt(timestamp).getFeatureCapacitiesAt(timestamp).get(
+                feature,
+                {"cpu": 0, "gpu": 0},
+            )
         featureSeries.append(
             {
                 "time": format_timestamp(timestamp),
@@ -238,7 +310,15 @@ def _build_overall_events(featureLoads: dict[str, dict[int, dict[str, float]]]) 
     return overallEvents
 
 
-def _build_overall_series(overallEvents, clusterConfig, rangeStart, rangeEnd, intervalSeconds, featureCommissionTimestamps):
+def _build_overall_series(
+    overallEvents,
+    clusterConfigTimeline,
+    rangeStart,
+    rangeEnd,
+    intervalSeconds,
+    allowedFeatures,
+    forcedFeatureStartTimestamps,
+):
     sortedEventTimestamps = sorted(overallEvents.keys())
     eventIndex = 0
     currentCpuLoad = 0.0
@@ -252,12 +332,15 @@ def _build_overall_series(overallEvents, clusterConfig, rangeStart, rangeEnd, in
             currentGpuLoad += event["gpu"]
             eventIndex += 1
 
-        commissionedFeatures = {
+        activeFeatures = {
             feature
-            for feature, commissionTimestamp in featureCommissionTimestamps.items()
-            if commissionTimestamp is not None and commissionTimestamp <= timestamp
+            for feature in allowedFeatures
+            if forcedFeatureStartTimestamps.get(feature, 0) <= timestamp
         }
-        capacities = clusterConfig.getClusterCapacitiesForFeaturesAt(timestamp, commissionedFeatures)
+        capacities = clusterConfigTimeline.getConfigAt(timestamp).getClusterCapacitiesForFeaturesAt(
+            timestamp,
+            activeFeatures,
+        )
         overallSeries.append(
             {
                 "time": format_timestamp(timestamp),
@@ -290,11 +373,16 @@ def _count_overflow_points(series: dict[str, list[dict]]) -> dict[str, int]:
     return overflowCounts
 
 
-def _resolve_job_feature_resource_shares(job, clusterConfig, allowedFeatures: set[str] | None = None) -> dict[str, dict[str, float]]:
+def _resolve_job_feature_resource_shares(
+    job,
+    clusterConfig,
+    timestamp: int | None = None,
+    allowedFeatures: set[str] | None = None,
+) -> dict[str, dict[str, float]]:
     if not job.hasAssignedNodes():
         return {}
 
-    featureCapacities = clusterConfig.getFeatureCapacitiesForHostlist(job.nodelist)
+    featureCapacities = clusterConfig.getFeatureCapacitiesForHostlist(job.nodelist, timestamp=timestamp)
     if allowedFeatures is not None:
         featureCapacities = {
             feature: capacity
@@ -346,10 +434,10 @@ def _infer_feature_commission_timestamps(
     return commissionTimestamps
 
 
-def _get_analysis_feature_names(clusterConfig) -> list[str]:
+def _get_analysis_feature_names(clusterConfigTimeline) -> list[str]:
     return [
         feature
-        for feature in clusterConfig.getFeatureNames()
+        for feature in clusterConfigTimeline.getFeatureNames()
         if feature not in ANALYSIS_DISABLED_FEATURES
     ]
 

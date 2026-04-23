@@ -9,8 +9,6 @@ except ModuleNotFoundError:
     logger = logging.getLogger(__name__)
     logger.success = logger.info
 
-from config import getClusterConfig
-
 from .cache import (
     build_state_payload,
     load_cached_historical_job_rows,
@@ -134,7 +132,7 @@ class slurmStorage:
         return export_historical_utilization_series(
             outputDir=DEFAULT_EXPORT_ROOT if outputDir is None else outputDir,
             jobs=self.getHistoricalJobs() if jobs is None else jobs,
-            clusterConfig=getClusterConfig() if clusterConfig is None else clusterConfig,
+            clusterConfig=clusterConfig,
             intervalMinutes=intervalMinutes,
             nowTimestamp=nowTimestamp,
         )
@@ -160,7 +158,7 @@ class slurmStorage:
         export_historical_utilization_series(
             outputDir=seriesOutputPath,
             jobs=cachedJobs,
-            clusterConfig=getClusterConfig() if clusterConfig is None else clusterConfig,
+            clusterConfig=clusterConfig,
             intervalMinutes=intervalMinutes,
             nowTimestamp=parse_time_value(nowTimestamp),
         )
@@ -213,7 +211,7 @@ class slurmStorage:
         export_historical_utilization_series(
             outputDir=seriesOutputPath,
             jobs=materializedJobs,
-            clusterConfig=getClusterConfig() if clusterConfig is None else clusterConfig,
+            clusterConfig=clusterConfig,
             intervalMinutes=intervalMinutes,
             nowTimestamp=parse_time_value(nowTimestamp),
         )

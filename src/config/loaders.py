@@ -145,16 +145,65 @@ def getLatestClusterConfigFile() -> str:
 
 
 def getLatestClusterConfigBackupFile() -> Path | None:
-    backupRoot = Path(clusterConfigBackupRoot)
-    backupFiles = sorted(
-        path
-        for path in backupRoot.rglob("*.yaml")
-        if path.is_file()
-    )
+    backupFiles = getClusterConfigBackupFiles()
     if not backupFiles:
         return None
 
     return backupFiles[-1]
+
+
+def getClusterConfigBackupFiles() -> list[Path]:
+    backupRoot = Path(clusterConfigBackupRoot)
+    return sorted(
+        path
+        for path in backupRoot.rglob("*.yaml")
+        if path.is_file()
+    )
+
+
+def loadClusterConfigTimelineSnapshots(
+    *,
+    currentTimestamp: int | float | None = None,
+    currentFilePath: str | Path | None = None,
+) -> list[dict]:
+    snapshots = []
+
+    for backupPath in getClusterConfigBackupFiles():
+        snapshots.append(
+            {
+                "timestamp": int(backupPath.stat().st_mtime),
+                "kind": "backup",
+                "path": str(backupPath.resolve()),
+                "config": ClusterConfig().loadConfig(str(backupPath)),
+            }
+        )
+
+    currentPath = Path(clusterConfigFile if currentFilePath is None else currentFilePath)
+    if currentPath.exists():
+        effectiveNowTimestamp = datetime.now().timestamp() if currentTimestamp is None else float(currentTimestamp)
+        snapshots.append(
+            {
+                "timestamp": int(max(effectiveNowTimestamp, currentPath.stat().st_mtime)),
+                "kind": "current",
+                "path": str(currentPath.resolve()),
+                "config": ClusterConfig().loadConfig(str(currentPath)),
+            }
+        )
+
+    if not snapshots:
+        raise FileNotFoundError(
+            f"Cluster config timeline is empty: neither backups in '{clusterConfigBackupRoot}' "
+            f"nor current file '{currentPath}' were found."
+        )
+
+    snapshots.sort(
+        key=lambda item: (
+            int(item["timestamp"]),
+            1 if item["kind"] == "current" else 0,
+            str(item["path"]),
+        )
+    )
+    return snapshots
 
 
 def buildClusterConfigBackupPath(timestamp: datetime | None = None) -> Path:

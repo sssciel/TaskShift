@@ -311,15 +311,11 @@ class ClusterConfig:
 
         return featureCounts
 
-    def getFeatureCapacitiesForHostlist(self, hostlist: str) -> dict[str, dict[str, int]]:
+    def getFeatureCapacitiesForHostlist(self, hostlist: str, timestamp: int | None = None) -> dict[str, dict[str, int]]:
         featureCapacities = {}
-        nodeCapacitiesMap = self._get_node_capacities_map()
+        nodeCapacitiesMap = self.getNodeCapacitiesForHostlist(hostlist, timestamp)
 
-        for nodeName in expand_hostlist(hostlist):
-            nodeCapacity = nodeCapacitiesMap.get(nodeName)
-            if nodeCapacity is None:
-                continue
-
+        for nodeCapacity in nodeCapacitiesMap.values():
             for feature in nodeCapacity["features"]:
                 featureCapacities.setdefault(feature, {"nodes": 0, "cpu": 0, "gpu": 0})
                 featureCapacities[feature]["nodes"] += 1
