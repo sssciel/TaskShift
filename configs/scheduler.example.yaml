@@ -25,10 +25,12 @@ web_panel_enabled: true
 hot_reload_enabled: false
 
 # Command that prints the current Slurm config to stdout.
-# Replace with an SSH command if the scheduler runs outside the Slurm control host.
+# Place the Slurm config snapshot at `configs/slurm.conf`, or replace this with an SSH command
+# if the scheduler runs outside the Slurm control host.
 cluster_config_refresh_command:
   - cat
-  - /etc/slurm/slurm.conf
+  - configs/slurm.conf
+
 
 # SLURM connector settings — how the scheduler launches jobs.
 connector:

@@ -18,7 +18,7 @@ DB_DATABASE=""
 ADMIN_PANEL_TOKEN=""
 ```
 
-The compose file exposes the admin panel on host port `8000` by default. Override it with:
+The compose file exposes the admin panel on host port `8585` by default. Override it with:
 
 ```sh
 TASKSHIFT_WEB_PORT=8080 docker compose -f deploy/compose.yaml up -d
@@ -37,3 +37,11 @@ cp configs/scheduler.example.yaml configs/scheduler.yaml
 cp configs/cluster.example.yaml configs/cluster.yaml
 cp configs/server.example.yaml configs/server.yaml
 ```
+
+Place the Slurm config snapshot at:
+
+```sh
+configs/slurm.conf
+```
+
+TaskShift reads that file through `cluster_config_refresh_command` in `configs/scheduler.yaml`.

@@ -665,10 +665,10 @@ class SchedulerConfig:
     DEFAULT_CLUSTER_CONFIG_SNAPSHOT_INTERVAL_HOURS = 24
     DEFAULT_WEB_PANEL_ENABLED = True
     DEFAULT_HOT_RELOAD_ENABLED = False
-    DEFAULT_CLUSTER_CONFIG_REFRESH_COMMAND = ["cat", "/etc/slurm/slurm.conf"]
+    DEFAULT_CLUSTER_CONFIG_REFRESH_COMMAND = ["cat", "configs/slurm.conf"]
     DEFAULT_CONNECTOR_LAUNCH_SCRIPT = "slurm-launch-job.sh"
     DEFAULT_CONNECTOR_TARGET_QOS = None
-
+    
     def __init__(self):
         self.timelimit = None
         self.max_launched_jobs = None

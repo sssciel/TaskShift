@@ -30,6 +30,7 @@ configs/.env
 configs/cluster.yaml
 configs/scheduler.yaml
 configs/server.yaml
+configs/slurm.conf
 
 !.env.example
 !configs/.env.example
