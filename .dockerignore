@@ -1,5 +1,4 @@
 .git
-.gitignore
 .venv
 venv
 __pycache__
@@ -11,16 +10,17 @@ __pycache__
 .ruff_cache
 .coverage
 .coverage.*
+.DS_Store
 
 logs
 exports
 data
+*_logs
 node_modules
-server.log
-executing.log
+package*
 
-experiments
 configs/.env
 configs/cluster.yaml
 configs/scheduler.yaml
 configs/server.yaml
+configs/cluster_backups

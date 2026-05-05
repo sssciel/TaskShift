@@ -569,13 +569,13 @@ class ServerConfig:
 
     def loadConfig(self, filePath):
         if not os.path.exists(filePath):
-            return self
+            config = {}
+        else:
+            with open(filePath, "r", encoding="utf-8") as file:
+                config = get_yaml_module().safe_load(file) or {}
 
-        with open(filePath, "r", encoding="utf-8") as file:
-            config = get_yaml_module().safe_load(file) or {}
-
-        self.host = config.get("host", self.DEFAULT_HOST)
-        self.port = int(config.get("port", self.DEFAULT_PORT))
+        self.host = os.getenv("TASKSHIFT_SERVER_HOST", config.get("host", self.DEFAULT_HOST))
+        self.port = int(os.getenv("TASKSHIFT_SERVER_PORT", config.get("port", self.DEFAULT_PORT)))
         return self
 
     def saveConfig(self, filePath):
@@ -603,8 +603,17 @@ class AdminPanelAccessConfig:
     def loadConfig(self, filePath):
         from dotenv import dotenv_values
 
-        config = dotenv_values(filePath) if os.path.exists(filePath) else {}
+        if os.path.exists(filePath):
+            config = dotenv_values(filePath)
+        else:
+            config = {}
+
         token = os.getenv("ADMIN_PANEL_TOKEN") or config.get("ADMIN_PANEL_TOKEN")
+        if not token:
+            raise FileNotFoundError(
+                f"ADMIN_PANEL_TOKEN is not configured. Set it in '{filePath}' or pass it as an environment variable."
+            )
+
         self.token = token.strip() if token else None
         return self
 
@@ -627,11 +636,18 @@ class DBConfig:
     def loadConfig(self, filePath):
         from dotenv import dotenv_values
 
-        config = dotenv_values(filePath) if os.path.exists(filePath) else {}
-        self.host = os.getenv("DB_HOST") or config.get("DB_HOST")
-        self.user = os.getenv("DB_USER") or config.get("DB_USER")
-        self.password = os.getenv("DB_PASSWD") or config.get("DB_PASSWD")
-        self.database = os.getenv("DB_DATABASE") or config.get("DB_DATABASE")
+        if os.path.exists(filePath):
+            load_dotenv(filePath)
+        elif not any(os.getenv(name) for name in ("DB_HOST", "DB_USER", "DB_PASSWD", "DB_DATABASE")):
+            raise FileNotFoundError(
+                f"Configuration file '{filePath}' not found. Please create it using .env.example as a template "
+                "or pass DB_HOST, DB_USER, DB_PASSWD, and DB_DATABASE as environment variables."
+            )
+
+        self.host = os.getenv("DB_HOST")
+        self.user = os.getenv("DB_USER")
+        self.password = os.getenv("DB_PASSWD")
+        self.database = os.getenv("DB_DATABASE")
         return self
 
     def getParameters(self):

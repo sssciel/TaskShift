@@ -1,0 +1,6 @@
+services:
+  taskshift:
+    volumes:
+      - ../configs:/app/configs
+      - ../logs:/app/logs
+      - ../exports:/app/exports

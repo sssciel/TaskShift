@@ -1,6 +1,6 @@
-mysql-connector-python==8.0.16
+mysql-connector-python==9.7.0
 python-dotenv==1.2.1
 loguru==0.7.3
-pyyaml==6.0
-pandas==2.2.3
+pyyaml==6.0.3
+pandas==2.3.3
 APScheduler==3.10.4
