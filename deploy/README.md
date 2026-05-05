@@ -15,6 +15,8 @@ DB_HOST=""
 DB_USER=""
 DB_PASSWD=""
 DB_DATABASE=""
+DB_CHARSET="utf8mb4"
+DB_COLLATION="utf8mb4_general_ci"
 ADMIN_PANEL_TOKEN=""
 ```
 

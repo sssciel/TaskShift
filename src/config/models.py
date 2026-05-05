@@ -627,11 +627,16 @@ class AdminPanelAccessConfig:
 
 
 class DBConfig:
+    DEFAULT_CHARSET = "utf8mb4"
+    DEFAULT_COLLATION = "utf8mb4_general_ci"
+
     def __init__(self):
         self.host = None
         self.user = None
         self.password = None
         self.database = None
+        self.charset = self.DEFAULT_CHARSET
+        self.collation = self.DEFAULT_COLLATION
 
     def loadConfig(self, filePath):
         from dotenv import dotenv_values
@@ -648,15 +653,22 @@ class DBConfig:
         self.user = os.getenv("DB_USER")
         self.password = os.getenv("DB_PASSWD")
         self.database = os.getenv("DB_DATABASE")
+        self.charset = os.getenv("DB_CHARSET", self.DEFAULT_CHARSET)
+        self.collation = os.getenv("DB_COLLATION", self.DEFAULT_COLLATION)
         return self
 
     def getParameters(self):
-        return {
+        parameters = {
             "host": self.host,
             "user": self.user,
             "password": self.password,
             "database": self.database,
         }
+        if self.charset:
+            parameters["charset"] = self.charset
+        if self.collation:
+            parameters["collation"] = self.collation
+        return parameters
 
 
 class SchedulerConfig:
