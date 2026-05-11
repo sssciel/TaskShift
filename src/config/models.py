@@ -639,7 +639,7 @@ class DBConfig:
         self.collation = self.DEFAULT_COLLATION
 
     def loadConfig(self, filePath):
-        from dotenv import dotenv_values
+        from dotenv import load_dotenv
 
         if os.path.exists(filePath):
             load_dotenv(filePath)
@@ -680,7 +680,7 @@ class SchedulerConfig:
     DEFAULT_CLUSTER_CONFIG_REFRESH_COMMAND = ["cat", "configs/slurm.conf"]
     DEFAULT_CONNECTOR_LAUNCH_SCRIPT = "slurm-launch-job.sh"
     DEFAULT_CONNECTOR_TARGET_QOS = None
-    
+
     def __init__(self):
         self.timelimit = None
         self.max_launched_jobs = None
