@@ -29,3 +29,15 @@ hot_reload_enabled: false
 cluster_config_refresh_command:
   - cat
   - /etc/slurm/slurm.conf
+
+# SLURM connector settings — how the scheduler launches jobs.
+connector:
+  # Path to the shell script that performs the actual QoS change.
+  # Relative paths are resolved from the project root.
+  # An example script is provided as slurm-launch-job.sh.example.
+  launch_script: slurm-launch-job.sh
+
+  # QoS name passed to the launch script via TASKSHIFT_QOS.
+  # The script should assign this QoS to the job so SLURM picks it up.
+  # Set to null or remove to let the script use its own default.
+  target_qos: taskshift

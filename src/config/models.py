@@ -650,6 +650,8 @@ class SchedulerConfig:
     DEFAULT_WEB_PANEL_ENABLED = True
     DEFAULT_HOT_RELOAD_ENABLED = False
     DEFAULT_CLUSTER_CONFIG_REFRESH_COMMAND = ["cat", "/etc/slurm/slurm.conf"]
+    DEFAULT_CONNECTOR_LAUNCH_SCRIPT = "slurm-launch-job.sh"
+    DEFAULT_CONNECTOR_TARGET_QOS = None
 
     def __init__(self):
         self.timelimit = None
@@ -664,6 +666,8 @@ class SchedulerConfig:
         self.cluster_config_refresh_command = list(
             self.DEFAULT_CLUSTER_CONFIG_REFRESH_COMMAND
         )
+        self.connector_launch_script = self.DEFAULT_CONNECTOR_LAUNCH_SCRIPT
+        self.connector_target_qos = self.DEFAULT_CONNECTOR_TARGET_QOS
 
     def loadConfig(self, filePath):
         if not os.path.exists(filePath):
@@ -697,6 +701,13 @@ class SchedulerConfig:
                 "cluster_config_refresh_command",
                 self.DEFAULT_CLUSTER_CONFIG_REFRESH_COMMAND,
             )
+        )
+        connectorConfig = config.get("connector", {})
+        self.connector_launch_script = connectorConfig.get(
+            "launch_script", self.DEFAULT_CONNECTOR_LAUNCH_SCRIPT
+        )
+        self.connector_target_qos = connectorConfig.get(
+            "target_qos", self.DEFAULT_CONNECTOR_TARGET_QOS
         )
         return self
 
@@ -741,6 +752,14 @@ class SchedulerConfig:
                 self.cluster_config_refresh_command
             )
 
+        if self.connector_launch_script:
+            result["connector"] = result.get("connector", {})
+            result["connector"]["launch_script"] = self.connector_launch_script
+
+        if self.connector_target_qos is not None:
+            result["connector"] = result.get("connector", {})
+            result["connector"]["target_qos"] = self.connector_target_qos
+
         return result
 
     def copy(self):
@@ -755,6 +774,8 @@ class SchedulerConfig:
         clone.web_panel_enabled = self.web_panel_enabled
         clone.hot_reload_enabled = self.hot_reload_enabled
         clone.cluster_config_refresh_command = list(self.cluster_config_refresh_command)
+        clone.connector_launch_script = self.connector_launch_script
+        clone.connector_target_qos = self.connector_target_qos
         return clone
 
     def _normalize_command(self, commandValue):

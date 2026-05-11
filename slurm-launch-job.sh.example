@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+#
+# TaskShift – SLURM job launch script
+# ====================================
+#
+# This script is called by the TaskShift scheduler when a pending job is
+# selected for launch. It receives all job metadata via environment variables
+# (see list below) and should use SLURM CLI commands (scontrol, etc.) to
+# change the job's QoS and/or priority so that SLURM will schedule it.
+#
+# INSTALLATION
+# ------------
+#   1. Copy this file to the TaskShift project root as  slurm-launch-job.sh
+#      (or set 'connector.launch_script' in scheduler.yaml to a custom path).
+#   2. Edit the configuration variables below to match your cluster.
+#   3. Make it executable:  chmod +x slurm-launch-job.sh
+#
+# ENVIRONMENT VARIABLES (set by the scheduler)
+# --------------------------------------------
+#   TASKSHIFT_JOB_ID        – SLURM job ID  (integer)
+#   TASKSHIFT_PARTITION     – job partition name
+#   TASKSHIFT_FEATURE       – resolved feature / node type
+#   TASKSHIFT_NODES         – comma-separated list of target nodes
+#   TASKSHIFT_QOS           – target QoS (from connector.target_qos in config)
+#   TASKSHIFT_CPUS          – requested CPUs
+#   TASKSHIFT_GPUS          – requested GPUs
+#   TASKSHIFT_TIMELIMIT     – job timelimit in minutes
+#
+# EXIT CODE
+# ---------
+#   0  – success
+#   non-zero – failure (scheduler will log the error but continue)
+
+set -euo pipefail
+
+# ── Configuration (edit these for your cluster) ────────────────────────────────
+
+# QoS to assign. Falls back to TASKSHIFT_QOS env var, then to "normal".
+TARGET_QOS="${TASKSHIFT_QOS:-taskshift}"
+
+# Priority boost: how much to add to the job's priority.
+# Set to 0 or empty to only change QoS without altering priority.
+PRIORITY_BOOST=""
+
+# ── Input validation ───────────────────────────────────────────────────────────
+
+JOB_ID="${TASKSHIFT_JOB_ID:-}"
+if [ -z "$JOB_ID" ]; then
+    echo "error: TASKSHIFT_JOB_ID is not set" >&2
+    exit 1
+fi
+
+if ! [[ "$JOB_ID" =~ ^[0-9]+$ ]]; then
+    echo "error: TASKSHIFT_JOB_ID is not a valid integer: '$JOB_ID'" >&2
+    exit 1
+fi
+
+# ── Apply QoS change ──────────────────────────────────────────────────────────
+
+echo "taskshift: updating job $JOB_ID → QoS=$TARGET_QOS"
+
+scontrol update JobId="$JOB_ID" QOS="$TARGET_QOS"
+
+if [ -n "$PRIORITY_BOOST" ]; then
+    echo "taskshift: setting priority Nice=-$PRIORITY_BOOST for job $JOB_ID"
+    scontrol update JobId="$JOB_ID" Nice="-${PRIORITY_BOOST}"
+fi
+
+echo "taskshift: job $JOB_ID launched successfully"
+exit 0

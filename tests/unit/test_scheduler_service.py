@@ -198,7 +198,10 @@ class TestSchedulerSchedule:
 
         assert result["launched_count"] == 1
         assert result["attempted_job_ids"] == [101]
-        mock_connector.executeJob.assert_called_once_with(job)
+        mock_connector.executeJob.assert_called_once()
+        call_args = mock_connector.executeJob.call_args
+        assert call_args[0][0] is job
+        assert call_args[1]["placement"].featureName == "type_a"
 
     # (c) Two jobs fit → launched=2
     def test_two_jobs_fit(self, mock_get_cluster_config, mock_append_event):
@@ -475,7 +478,10 @@ class TestSchedulerReconcileLaunchAttempts:
 
         assert result1["launched_count"] == 1
         assert result1["attempted_job_ids"] == [1001]
-        mock_connector.executeJob.assert_called_once_with(job)
+        mock_connector.executeJob.assert_called_once()
+        call_args = mock_connector.executeJob.call_args
+        assert call_args[0][0] is job
+        assert call_args[1]["placement"].featureName == "type_a"
 
         # ── Second tick: job is still pending (slurm didn't start it) ──
         mock_connector.reset_mock()
