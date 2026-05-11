@@ -228,7 +228,7 @@ def run_scheduler_once(
             launchScript=effectiveSchedulerConfig.connector_launch_script,
             targetQos=effectiveSchedulerConfig.connector_target_qos,
         )
-        Scheduler(
+        return Scheduler(
             storage,
             connector,
             schedulerConfig=effectiveSchedulerConfig,
