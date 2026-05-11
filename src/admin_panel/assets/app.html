@@ -1,263 +1,480 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TaskShift Admin</title>
-  <style>
-__APP_CSS__
-  </style>
-</head>
-<body>
-  <div class="layout">
-    <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-badge">TaskShift Admin</div>
-        <h1>Cluster panel</h1>
-        <p>Inspect the active cluster snapshot, edit live config files, and keep room for future tabs without changing the operating model.</p>
-      </div>
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>TaskShift Admin</title>
+        <style>
+            __APP_CSS__
+        </style>
+    </head>
+    <body>
+        <div class="layout">
+            <aside class="sidebar">
+                <div class="brand">
+                    <div class="brand-badge">TaskShift Admin</div>
+                    <h1>Cluster panel</h1>
+                    <p>
+                        Inspect the active cluster snapshot, edit live config
+                        files, and keep room for future tabs without changing
+                        the operating model.
+                    </p>
+                </div>
 
-      <div class="language-switch">
-        <select id="languageSelect">
-          <option value="ru">Русский</option>
-          <option value="en">English</option>
-        </select>
-      </div>
+                <div class="language-switch">
+                    <select id="languageSelect">
+                        <option value="ru">Русский</option>
+                        <option value="en">English</option>
+                    </select>
+                </div>
 
-      <div class="tab-list">
-        <button class="tab-button active" data-tab="system">
-          <span class="tab-label">System</span>
-          <span class="tab-caption">Scheduler runtime state, manual trigger, and the latest launch attempts.</span>
-        </button>
-        <button class="tab-button" data-tab="cluster">
-          <span class="tab-label">Cluster</span>
-          <span class="tab-caption">Node type tree, node groups, partitions, active snapshot source.</span>
-        </button>
-        <button class="tab-button" data-tab="configs">
-          <span class="tab-label">Configs</span>
-          <span class="tab-caption">Edit `scheduler.yaml`, `server.yaml`, active cluster config and `.env`.</span>
-        </button>
-        <button class="tab-button" data-tab="calendars">
-          <span class="tab-label">Calendars</span>
-          <span class="tab-caption">Edit calendar configs by year, add new years, and discover new calendar files.</span>
-        </button>
-        <button class="tab-button" data-tab="logs">
-          <span class="tab-label">Logs</span>
-          <span class="tab-caption">Structured view for `taskshift.log` with search and level filters.</span>
-        </button>
-        <button class="tab-button" data-tab="jobs">
-          <span class="tab-label">Jobs</span>
-          <span class="tab-caption">Launch-event journal with search by job id and status.</span>
-        </button>
-      </div>
+                <div class="tab-list">
+                    <button class="tab-button active" data-tab="system">
+                        <span class="tab-label">System</span>
+                        <span class="tab-caption"
+                            >Scheduler runtime state, manual trigger, and the
+                            latest launch attempts.</span
+                        >
+                    </button>
+                    <button class="tab-button" data-tab="cluster">
+                        <span class="tab-label">Cluster</span>
+                        <span class="tab-caption"
+                            >Node type tree, node groups, partitions, active
+                            snapshot source.</span
+                        >
+                    </button>
+                    <button class="tab-button" data-tab="configs">
+                        <span class="tab-label">Configs</span>
+                        <span class="tab-caption"
+                            >Edit `scheduler.yaml`, `server.yaml`, active
+                            cluster config and `.env`.</span
+                        >
+                    </button>
+                    <button class="tab-button" data-tab="calendars">
+                        <span class="tab-label">Calendars</span>
+                        <span class="tab-caption"
+                            >Edit calendar configs by year, add new years, and
+                            discover new calendar files.</span
+                        >
+                    </button>
+                    <button class="tab-button" data-tab="logs">
+                        <span class="tab-label">Logs</span>
+                        <span class="tab-caption"
+                            >Structured view for `taskshift.log` with search and
+                            level filters.</span
+                        >
+                    </button>
+                    <button class="tab-button" data-tab="jobs">
+                        <span class="tab-label">Jobs</span>
+                        <span class="tab-caption"
+                            >Launch-event journal with search by job id and
+                            status.</span
+                        >
+                    </button>
+                </div>
 
-      <div class="side-card">
-        <h3>Auth</h3>
-        <p>Admin access is protected by <code>ADMIN_PANEL_TOKEN</code> from <code>configs/.env</code>.</p>
-      </div>
+                <div class="side-card">
+                    <h3>Auth</h3>
+                    <p>
+                        Admin access is protected by
+                        <code>ADMIN_PANEL_TOKEN</code> from
+                        <code>configs/.env</code>.
+                    </p>
+                </div>
 
-      <div class="side-card">
-        <h3>Editing</h3>
-        <p>Cluster edits target the currently active cluster config file used by the scheduler.</p>
-      </div>
+                <div class="side-card">
+                    <h3>Editing</h3>
+                    <p>
+                        Cluster edits target the currently active cluster config
+                        file used by the scheduler.
+                    </p>
+                </div>
 
-      <form method="post" action="/logout">
-        <button class="logout" type="submit">Log out</button>
-      </form>
-    </aside>
+                <form method="post" action="/logout">
+                    <button class="logout" type="submit">Log out</button>
+                </form>
+            </aside>
 
-    <main class="content">
-      <div class="topbar">
-        <div>
-          <h2 id="panelTitle">System status</h2>
-          <p id="panelSubtitle">Loading scheduler runtime state.</p>
+            <main class="content">
+                <div class="topbar">
+                    <div>
+                        <h2 id="panelTitle">System status</h2>
+                        <p id="panelSubtitle">
+                            Loading scheduler runtime state.
+                        </p>
+                    </div>
+                    <div class="status" id="statusBox">Ready.</div>
+                </div>
+
+                <section class="panel active" data-panel="system">
+                    <div class="card system-card">
+                        <div class="system-header">
+                            <div>
+                                <h3>System status</h3>
+                                <p id="systemStatusSummary">
+                                    Loading scheduler runtime state.
+                                </p>
+                            </div>
+                            <div class="inline-form system-controls">
+                                <input
+                                    id="manualMaxLaunchedJobsInput"
+                                    type="number"
+                                    min="1"
+                                    step="1"
+                                    placeholder="Max jobs"
+                                />
+                                <button
+                                    class="primary"
+                                    id="runSchedulerNowButton"
+                                    type="button"
+                                >
+                                    Run scheduler now
+                                </button>
+                            </div>
+                        </div>
+                        <div class="metrics" id="systemStatusMetrics"></div>
+                        <div class="system-grid">
+                            <div class="system-pane">
+                                <h4>Next run</h4>
+                                <p id="systemCountdownText">
+                                    Loading next scheduler tick.
+                                </p>
+                            </div>
+                            <div class="system-pane">
+                                <h4>Last run</h4>
+                                <p id="systemLastRunText">
+                                    Loading last scheduler pass.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="system-queue-header">
+                            <h4>Last launch attempts</h4>
+                            <p id="systemQueueSummary">
+                                Loading jobs attempted on the latest scheduler
+                                pass.
+                            </p>
+                        </div>
+                        <div class="queue-list" id="systemQueueList"></div>
+                        <details class="runtime-error" id="systemErrorDetails">
+                            <summary id="systemErrorSummary">
+                                Last error log
+                            </summary>
+                            <pre id="systemErrorLog"></pre>
+                        </details>
+                    </div>
+                </section>
+
+                <section class="panel" data-panel="cluster">
+                    <div class="card">
+                        <h3 id="clusterTopologyHeading">Cluster topology</h3>
+                        <p id="clusterTopologyIntro">
+                            Inspect the active cluster snapshot, switch the
+                            parsed source file, and browse the node type and
+                            partition tree.
+                        </p>
+                    </div>
+                    <div class="grid two">
+                        <div class="card">
+                            <h3>Active snapshot</h3>
+                            <div
+                                class="toolbar-row compact"
+                                style="margin-bottom: 12px"
+                            >
+                                <select id="clusterSourceSelect"></select>
+                                <button
+                                    class="secondary"
+                                    id="reloadClusterSourceButton"
+                                    type="button"
+                                >
+                                    Reload source
+                                </button>
+                            </div>
+                            <p id="clusterSourceText">
+                                Loading source metadata.
+                            </p>
+                            <div class="metrics" id="clusterMetrics"></div>
+                        </div>
+                        <div class="card">
+                            <h3>Overview</h3>
+                            <p id="clusterOverviewText">
+                                Loading node type and partition counts.
+                            </p>
+                            <div
+                                class="metrics"
+                                id="clusterOverviewMetrics"
+                            ></div>
+                        </div>
+                    </div>
+                    <div class="tree" id="clusterTree"></div>
+                </section>
+
+                <section class="panel" data-panel="configs">
+                    <div class="card">
+                        <h3>Editable config files</h3>
+                        <p>
+                            Select a file, edit its contents, and save it back
+                            to disk. YAML files are syntax-checked before write.
+                        </p>
+                    </div>
+                    <div class="file-toolbar" id="fileToolbar"></div>
+                    <div class="editor-meta" id="editorPath">
+                        Loading file target.
+                    </div>
+                    <textarea id="configEditor" spellcheck="false"></textarea>
+                    <div class="actions">
+                        <button class="primary" id="saveButton" type="button">
+                            Save file
+                        </button>
+                        <button
+                            class="secondary"
+                            id="reloadButton"
+                            type="button"
+                        >
+                            Reload from disk
+                        </button>
+                    </div>
+                </section>
+
+                <section class="panel" data-panel="calendars">
+                    <div class="grid two">
+                        <div class="card">
+                            <h3>Calendar discovery</h3>
+                            <p>
+                                Calendar files are discovered dynamically by
+                                scanning
+                                <code>configs/calendar/&lt;year&gt;/*.yaml</code
+                                >. If a new file appears in any year, it becomes
+                                a known calendar type here automatically.
+                            </p>
+                            <div
+                                class="metrics"
+                                id="calendarOverviewMetrics"
+                            ></div>
+                        </div>
+                        <div class="card stack">
+                            <div>
+                                <h3>Create year</h3>
+                                <p>
+                                    Add a new calendar year and optionally copy
+                                    files from an existing year.
+                                </p>
+                                <div class="inline-form">
+                                    <input
+                                        id="newCalendarYearInput"
+                                        type="text"
+                                        inputmode="numeric"
+                                        placeholder="2027"
+                                    />
+                                    <select
+                                        id="copyCalendarYearSelect"
+                                    ></select>
+                                    <button
+                                        class="primary"
+                                        id="createCalendarYearButton"
+                                        type="button"
+                                    >
+                                        Create year
+                                    </button>
+                                </div>
+                            </div>
+                            <div>
+                                <h3>Add calendar file</h3>
+                                <p>
+                                    Create a new calendar YAML for the selected
+                                    year. This is how the panel learns about new
+                                    calendar types over time.
+                                </p>
+                                <div class="inline-form">
+                                    <input
+                                        id="newCalendarFileInput"
+                                        type="text"
+                                        placeholder="event_calendar.yaml"
+                                    />
+                                    <select
+                                        id="templateCalendarYearSelect"
+                                    ></select>
+                                    <button
+                                        class="secondary"
+                                        id="createCalendarFileButton"
+                                        type="button"
+                                    >
+                                        Add file
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="calendar-layout">
+                        <aside class="calendar-sidebar">
+                            <div class="card">
+                                <h3>Years</h3>
+                                <div
+                                    class="year-list"
+                                    id="calendarYearList"
+                                ></div>
+                            </div>
+                            <div class="card">
+                                <h3>Files in year</h3>
+                                <div
+                                    class="calendar-file-list"
+                                    id="calendarFileList"
+                                ></div>
+                            </div>
+                        </aside>
+
+                        <div class="card">
+                            <h3>Calendar editor</h3>
+                            <div class="calendar-meta" id="calendarEditorMeta">
+                                Loading calendar file target.
+                            </div>
+                            <textarea
+                                id="calendarEditor"
+                                spellcheck="false"
+                            ></textarea>
+                            <div class="actions">
+                                <button
+                                    class="primary"
+                                    id="saveCalendarButton"
+                                    type="button"
+                                >
+                                    Save calendar
+                                </button>
+                                <button
+                                    class="secondary"
+                                    id="reloadCalendarButton"
+                                    type="button"
+                                >
+                                    Reload calendar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="panel" data-panel="logs">
+                    <div class="grid two">
+                        <div class="card">
+                            <h3>Service log</h3>
+                            <p id="taskshiftLogPath">Loading log file path.</p>
+                            <div class="metrics" id="taskshiftLogMetrics"></div>
+                        </div>
+                        <div class="card">
+                            <h3>Filters</h3>
+                            <div class="toolbar">
+                                <div class="toolbar-row">
+                                    <input
+                                        id="taskshiftLogSearchInput"
+                                        type="search"
+                                        placeholder="Search text in source or message"
+                                    />
+                                    <button
+                                        class="secondary"
+                                        id="reloadTaskshiftLogButton"
+                                        type="button"
+                                    >
+                                        Reload log
+                                    </button>
+                                </div>
+                                <div
+                                    class="status-filter-group"
+                                    id="taskshiftStatusFilters"
+                                ></div>
+                                <div class="toolbar-row">
+                                    <button
+                                        class="secondary"
+                                        id="taskshiftPrevPageButton"
+                                        type="button"
+                                    >
+                                        Prev page
+                                    </button>
+                                    <div
+                                        class="editor-meta"
+                                        id="taskshiftLogPageInfo"
+                                    >
+                                        Page 1 / 1
+                                    </div>
+                                    <button
+                                        class="secondary"
+                                        id="taskshiftNextPageButton"
+                                        type="button"
+                                    >
+                                        Next page
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="log-list" id="taskshiftLogList"></div>
+                </section>
+
+                <section class="panel" data-panel="jobs">
+                    <div class="grid two">
+                        <div class="card">
+                            <h3>Job launch log</h3>
+                            <p id="jobLogPath">Loading job log file path.</p>
+                            <div class="metrics" id="jobLogMetrics"></div>
+                        </div>
+                        <div class="card">
+                            <h3>Filters</h3>
+                            <div class="toolbar">
+                                <div class="toolbar-row">
+                                    <input
+                                        id="jobLogIdInput"
+                                        type="search"
+                                        inputmode="numeric"
+                                        placeholder="Filter by job id"
+                                    />
+                                    <input
+                                        id="jobLogSearchInput"
+                                        type="search"
+                                        placeholder="Search name or reason"
+                                    />
+                                    <button
+                                        class="secondary"
+                                        id="reloadJobLogButton"
+                                        type="button"
+                                    >
+                                        Reload jobs log
+                                    </button>
+                                </div>
+                                <div
+                                    class="status-filter-group"
+                                    id="jobStatusFilters"
+                                ></div>
+                                <div class="toolbar-row">
+                                    <button
+                                        class="secondary"
+                                        id="jobPrevPageButton"
+                                        type="button"
+                                    >
+                                        Prev page
+                                    </button>
+                                    <div
+                                        class="editor-meta"
+                                        id="jobLogPageInfo"
+                                    >
+                                        Page 1 / 1
+                                    </div>
+                                    <button
+                                        class="secondary"
+                                        id="jobNextPageButton"
+                                        type="button"
+                                    >
+                                        Next page
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="log-list" id="jobLogList"></div>
+                </section>
+            </main>
         </div>
-        <div class="status" id="statusBox">Ready.</div>
-      </div>
 
-      <section class="panel active" data-panel="system">
-        <div class="card system-card">
-          <div class="system-header">
-            <div>
-              <h3>System status</h3>
-              <p id="systemStatusSummary">Loading scheduler runtime state.</p>
-            </div>
-            <div class="inline-form system-controls">
-              <input id="manualMaxLaunchedJobsInput" type="number" min="1" step="1" placeholder="Max jobs">
-              <button class="primary" id="runSchedulerNowButton" type="button">Run scheduler now</button>
-            </div>
-          </div>
-          <div class="metrics" id="systemStatusMetrics"></div>
-          <div class="system-grid">
-            <div class="system-pane">
-              <h4>Next run</h4>
-              <p id="systemCountdownText">Loading next scheduler tick.</p>
-            </div>
-            <div class="system-pane">
-              <h4>Last run</h4>
-              <p id="systemLastRunText">Loading last scheduler pass.</p>
-            </div>
-          </div>
-          <div class="system-queue-header">
-            <h4>Last launch attempts</h4>
-            <p id="systemQueueSummary">Loading jobs attempted on the latest scheduler pass.</p>
-          </div>
-          <div class="queue-list" id="systemQueueList"></div>
-          <details class="runtime-error" id="systemErrorDetails">
-            <summary id="systemErrorSummary">Last error log</summary>
-            <pre id="systemErrorLog"></pre>
-          </details>
-        </div>
-      </section>
-
-      <section class="panel" data-panel="cluster">
-        <div class="card">
-          <h3 id="clusterTopologyHeading">Cluster topology</h3>
-          <p id="clusterTopologyIntro">Inspect the active cluster snapshot, switch the parsed source file, and browse the node type and partition tree.</p>
-        </div>
-        <div class="grid two">
-          <div class="card">
-            <h3>Active snapshot</h3>
-            <div class="toolbar-row compact" style="margin-bottom: 12px;">
-              <select id="clusterSourceSelect"></select>
-              <button class="secondary" id="reloadClusterSourceButton" type="button">Reload source</button>
-            </div>
-            <p id="clusterSourceText">Loading source metadata.</p>
-            <div class="metrics" id="clusterMetrics"></div>
-          </div>
-          <div class="card">
-            <h3>Overview</h3>
-            <p id="clusterOverviewText">Loading node type and partition counts.</p>
-            <div class="metrics" id="clusterOverviewMetrics"></div>
-          </div>
-        </div>
-        <div class="tree" id="clusterTree"></div>
-      </section>
-
-      <section class="panel" data-panel="configs">
-        <div class="card">
-          <h3>Editable config files</h3>
-          <p>Select a file, edit its contents, and save it back to disk. YAML files are syntax-checked before write.</p>
-        </div>
-        <div class="file-toolbar" id="fileToolbar"></div>
-        <div class="editor-meta" id="editorPath">Loading file target.</div>
-        <textarea id="configEditor" spellcheck="false"></textarea>
-        <div class="actions">
-          <button class="primary" id="saveButton" type="button">Save file</button>
-          <button class="secondary" id="reloadButton" type="button">Reload from disk</button>
-        </div>
-      </section>
-
-      <section class="panel" data-panel="calendars">
-        <div class="grid two">
-          <div class="card">
-            <h3>Calendar discovery</h3>
-            <p>Calendar files are discovered dynamically by scanning <code>configs/calendar/&lt;year&gt;/*.yaml</code>. If a new file appears in any year, it becomes a known calendar type here automatically.</p>
-            <div class="metrics" id="calendarOverviewMetrics"></div>
-          </div>
-          <div class="card stack">
-            <div>
-              <h3>Create year</h3>
-              <p>Add a new calendar year and optionally copy files from an existing year.</p>
-              <div class="inline-form">
-                <input id="newCalendarYearInput" type="text" inputmode="numeric" placeholder="2027">
-                <select id="copyCalendarYearSelect"></select>
-                <button class="primary" id="createCalendarYearButton" type="button">Create year</button>
-              </div>
-            </div>
-            <div>
-              <h3>Add calendar file</h3>
-              <p>Create a new calendar YAML for the selected year. This is how the panel learns about new calendar types over time.</p>
-              <div class="inline-form">
-                <input id="newCalendarFileInput" type="text" placeholder="event_calendar.yaml">
-                <select id="templateCalendarYearSelect"></select>
-                <button class="secondary" id="createCalendarFileButton" type="button">Add file</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="calendar-layout">
-          <aside class="calendar-sidebar">
-            <div class="card">
-              <h3>Years</h3>
-              <div class="year-list" id="calendarYearList"></div>
-            </div>
-            <div class="card">
-              <h3>Files in year</h3>
-              <div class="calendar-file-list" id="calendarFileList"></div>
-            </div>
-          </aside>
-
-          <div class="card">
-            <h3>Calendar editor</h3>
-            <div class="calendar-meta" id="calendarEditorMeta">Loading calendar file target.</div>
-            <textarea id="calendarEditor" spellcheck="false"></textarea>
-            <div class="actions">
-              <button class="primary" id="saveCalendarButton" type="button">Save calendar</button>
-              <button class="secondary" id="reloadCalendarButton" type="button">Reload calendar</button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel" data-panel="logs">
-        <div class="grid two">
-          <div class="card">
-            <h3>Service log</h3>
-            <p id="taskshiftLogPath">Loading log file path.</p>
-            <div class="metrics" id="taskshiftLogMetrics"></div>
-          </div>
-          <div class="card">
-            <h3>Filters</h3>
-            <div class="toolbar">
-              <div class="toolbar-row">
-                <input id="taskshiftLogSearchInput" type="search" placeholder="Search text in source or message">
-                <button class="secondary" id="reloadTaskshiftLogButton" type="button">Reload log</button>
-              </div>
-              <div class="status-filter-group" id="taskshiftStatusFilters"></div>
-              <div class="toolbar-row">
-                <button class="secondary" id="taskshiftPrevPageButton" type="button">Prev page</button>
-                <div class="editor-meta" id="taskshiftLogPageInfo">Page 1 / 1</div>
-                <button class="secondary" id="taskshiftNextPageButton" type="button">Next page</button>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="log-list" id="taskshiftLogList"></div>
-      </section>
-
-      <section class="panel" data-panel="jobs">
-        <div class="grid two">
-          <div class="card">
-            <h3>Job launch log</h3>
-            <p id="jobLogPath">Loading job log file path.</p>
-            <div class="metrics" id="jobLogMetrics"></div>
-          </div>
-          <div class="card">
-            <h3>Filters</h3>
-            <div class="toolbar">
-              <div class="toolbar-row">
-                <input id="jobLogIdInput" type="search" inputmode="numeric" placeholder="Filter by job id">
-                <input id="jobLogSearchInput" type="search" placeholder="Search name or reason">
-                <button class="secondary" id="reloadJobLogButton" type="button">Reload jobs log</button>
-              </div>
-              <div class="status-filter-group" id="jobStatusFilters"></div>
-              <div class="toolbar-row">
-                <button class="secondary" id="jobPrevPageButton" type="button">Prev page</button>
-                <div class="editor-meta" id="jobLogPageInfo">Page 1 / 1</div>
-                <button class="secondary" id="jobNextPageButton" type="button">Next page</button>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="log-list" id="jobLogList"></div>
-      </section>
-    </main>
-  </div>
-
-  <script>
-__APP_JS__
-  </script>
-</body>
+        <div class="toast-container" id="toastContainer"></div>
+        <script>
+            __APP_JS__;
+        </script>
+    </body>
 </html>

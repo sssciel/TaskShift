@@ -1,12 +1,12 @@
 from html import escape
 from pathlib import Path
 
-
 ASSETS_ROOT = Path(__file__).resolve().parent / "assets"
 
 APP_JS_FILES = [
     "js/translations.js",
     "js/shared.js",
+    "js/toast.js",
     "js/system.js",
     "js/cluster.js",
     "js/configs.js",
