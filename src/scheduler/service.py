@@ -18,6 +18,7 @@ from config import (
     getSchedulerConfig,
 )
 from forecast import ForecastService
+
 from .attempt_cache import (
     load_failed_job_pool,
     load_launch_attempts,
@@ -28,7 +29,13 @@ from .resources import ResourceAvailabilityTree
 
 
 class Scheduler:
-    def __init__(self, storage, connector, forecastDataDir: str | None = None, schedulerConfig=None):
+    def __init__(
+        self,
+        storage,
+        connector,
+        forecastDataDir: str | None = None,
+        schedulerConfig=None,
+    ):
         self.config = schedulerConfig or getSchedulerConfig()
         self.clusterConfig = getClusterConfig()
         self.forecastService = ForecastService(dataDir=forecastDataDir)
@@ -71,8 +78,13 @@ class Scheduler:
             effectiveMaxLaunchedJobs = self.config.max_launched_jobs
 
         for job in jobs:
-            if effectiveMaxLaunchedJobs is not None and launchedJobsCount >= effectiveMaxLaunchedJobs:
-                logger.info(f"Reached per-pass launch limit: {effectiveMaxLaunchedJobs}")
+            if (
+                effectiveMaxLaunchedJobs is not None
+                and launchedJobsCount >= effectiveMaxLaunchedJobs
+            ):
+                logger.info(
+                    f"Reached per-pass launch limit: {effectiveMaxLaunchedJobs}"
+                )
                 break
 
             if job.getTimelimit() > self.config.timelimit:
@@ -93,7 +105,7 @@ class Scheduler:
                 f"Executing job: {job.getID()} on feature {placement.featureName} "
                 f"using nodes {', '.join(placement.nodeNames)}"
             )
-            self.connector.executeJob(job)
+            self.connector.executeJob(job, placement=placement)
             launchEvent = build_job_launch_event(
                 job=job,
                 placement=placement,
@@ -106,7 +118,11 @@ class Scheduler:
             pendingJobsById[job.getID()]["was_attempted"] = True
 
         save_launch_attempts(currentLaunchAttempts)
-        skippedTotalCount = skippedByTimelimitCount + skippedByResourcesCount + skippedByFailedAttemptCount
+        skippedTotalCount = (
+            skippedByTimelimitCount
+            + skippedByResourcesCount
+            + skippedByFailedAttemptCount
+        )
         logger.info(
             f"Scheduler pass finished: launched={launchedJobsCount}, skipped_total={skippedTotalCount}, "
             f"skipped_by_timelimit={skippedByTimelimitCount}, skipped_by_resources={skippedByResourcesCount}, "
@@ -135,19 +151,25 @@ class Scheduler:
         for attempt in previousAttempts:
             reconciledAttemptEvent = dict(attempt)
             reconciledAttemptEvent["checked_at_unix"] = timestamp
-            reconciledAttemptEvent["checked_at"] = datetime.fromtimestamp(timestamp).isoformat(timespec="seconds")
+            reconciledAttemptEvent["checked_at"] = datetime.fromtimestamp(
+                timestamp
+            ).isoformat(timespec="seconds")
 
             jobId = attempt.get("job_id")
             if jobId in pendingJobIds:
                 reconciledAttemptEvent["status"] = JOB_LAUNCH_STATUS_FAILED
-                reconciledAttemptEvent["reason"] = "job_still_pending_on_next_scheduler_tick"
+                reconciledAttemptEvent["reason"] = (
+                    "job_still_pending_on_next_scheduler_tick"
+                )
                 try:
                     failedJobPool.add(int(jobId))
                 except (TypeError, ValueError):
                     pass
             else:
                 reconciledAttemptEvent["status"] = JOB_LAUNCH_STATUS_LEFT_PENDING_QUEUE
-                reconciledAttemptEvent["reason"] = "job_missing_from_pending_queue_on_next_scheduler_tick"
+                reconciledAttemptEvent["reason"] = (
+                    "job_missing_from_pending_queue_on_next_scheduler_tick"
+                )
 
             append_job_launch_event(reconciledAttemptEvent)
 
@@ -160,14 +182,22 @@ class Scheduler:
         if job.partition and partitionConfig is None:
             return None
 
-        allowedNodeNames = self.clusterConfig.getPartitionNodeNames(job.partition, timestamp)
-        partitionFeatures = self.clusterConfig.getPartitionFeatureNames(job.partition, timestamp)
+        allowedNodeNames = self.clusterConfig.getPartitionNodeNames(
+            job.partition, timestamp
+        )
+        partitionFeatures = self.clusterConfig.getPartitionFeatureNames(
+            job.partition, timestamp
+        )
         requestedFeatures = job.getRequestedFeatures(partitionFeatures)
         horizonMinutes = job.getTimelimit()
         requestedCpus = job.getRequestedCpus()
         requestedGpus = job.getRequestedGpus()
-        maxCpuPerNode = partitionConfig.max_cpus_per_node if partitionConfig is not None else None
-        maxNodesLimit = partitionConfig.max_nodes if partitionConfig is not None else None
+        maxCpuPerNode = (
+            partitionConfig.max_cpus_per_node if partitionConfig is not None else None
+        )
+        maxNodesLimit = (
+            partitionConfig.max_nodes if partitionConfig is not None else None
+        )
 
         for featureName in requestedFeatures:
             placement = resourceTree.findPlacementOnFeature(
@@ -185,13 +215,19 @@ class Scheduler:
                 allowedNodeNames=allowedNodeNames,
                 maxCpuPerNode=maxCpuPerNode,
             )
-            requestedCpuPercent = self._calculateRequestedPercent(requestedCpus, capacities["cpu"])
-            requestedGpuPercent = self._calculateRequestedPercent(requestedGpus, capacities["gpu"])
+            requestedCpuPercent = self._calculateRequestedPercent(
+                requestedCpus, capacities["cpu"]
+            )
+            requestedGpuPercent = self._calculateRequestedPercent(
+                requestedGpus, capacities["gpu"]
+            )
 
             if requestedCpuPercent is None or requestedGpuPercent is None:
                 continue
 
-            forecast = self.forecastService.buildFeatureForecast(featureName, horizonMinutes)
+            forecast = self.forecastService.buildFeatureForecast(
+                featureName, horizonMinutes
+            )
             if (
                 requestedCpuPercent <= forecast.availableCpuPercent
                 and requestedGpuPercent <= forecast.availableGpuPercent

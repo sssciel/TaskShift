@@ -12,11 +12,11 @@ except ModuleNotFoundError:
 
 from admin_panel import AdminPanelServer
 from config import (
+    SchedulerRuntimeConfig,
     clusterConfigFile,
     getSchedulerConfig,
     refreshClusterConfig,
     refreshClusterConfigIfDue,
-    SchedulerRuntimeConfig,
     setSchedulerForecastDataDir,
 )
 from config.logger import setup_logger
@@ -68,7 +68,9 @@ def build_parser():
     parser = argparse.ArgumentParser(description="TaskShift command line interface")
     subparsers = parser.add_subparsers(dest="command")
 
-    scheduleParser = subparsers.add_parser("schedule", help="Run scheduler loop in foreground every 15 minutes")
+    scheduleParser = subparsers.add_parser(
+        "schedule", help="Run scheduler loop in foreground every 15 minutes"
+    )
     add_scheduler_run_arguments(scheduleParser)
     scheduleParser.add_argument(
         "--with-web-panel",
@@ -81,7 +83,9 @@ def build_parser():
         help="Disable the admin web panel even if it is enabled in scheduler.yaml",
     )
 
-    runOnceParser = subparsers.add_parser("run-scheduler-once", help="Run one scheduler pass immediately")
+    runOnceParser = subparsers.add_parser(
+        "run-scheduler-once", help="Run one scheduler pass immediately"
+    )
     add_scheduler_run_arguments(runOnceParser)
 
     webPanelParser = subparsers.add_parser(
@@ -211,14 +215,19 @@ def resolve_project_path(pathValue: str | None) -> str | None:
     return str((Path(get_default_project_root()) / path).resolve())
 
 
-def run_scheduler_once(args, schedulerConfig=None, maxLaunchedJobsOverride: int | None = None):
+def run_scheduler_once(
+    args, schedulerConfig=None, maxLaunchedJobsOverride: int | None = None
+):
     logger.debug("Creating MySQL connector")
     storage = register_resource(slurmStorage().create())
     effectiveSchedulerConfig = schedulerConfig or getSchedulerConfig()
 
     try:
         logger.info("Get pending jobs")
-        connector = SlurmConnector()
+        connector = SlurmConnector(
+            launchScript=effectiveSchedulerConfig.connector_launch_script,
+            targetQos=effectiveSchedulerConfig.connector_target_qos,
+        )
         Scheduler(
             storage,
             connector,
@@ -296,7 +305,9 @@ def run_scheduler_loop(args, schedulerRuntimeConfig=None, schedulerControlPlane=
             snapshotIntervalHours=schedulerConfig.cluster_config_snapshot_interval_hours,
         )
         if snapshotStatus["refreshed"]:
-            logger.info(f"Cluster config snapshot refreshed: {snapshotStatus['backup_file']}")
+            logger.info(
+                f"Cluster config snapshot refreshed: {snapshotStatus['backup_file']}"
+            )
         elif snapshotStatus["reason"] == "window_not_elapsed":
             logger.info(
                 "Cluster config snapshot refresh skipped: latest backup "
@@ -304,7 +315,9 @@ def run_scheduler_loop(args, schedulerRuntimeConfig=None, schedulerControlPlane=
                 "is still inside the configured refresh window."
             )
         elif snapshotStatus["reason"] == "disabled":
-            logger.info("Cluster config snapshot auto-refresh is disabled in scheduler.yaml")
+            logger.info(
+                "Cluster config snapshot auto-refresh is disabled in scheduler.yaml"
+            )
         elif snapshotStatus["reason"] == "refresh_failed_using_latest_backup":
             logger.warning(
                 "Cluster live refresh failed; scheduler will continue using the latest backup "
@@ -339,7 +352,9 @@ def run_scheduler_loop(args, schedulerRuntimeConfig=None, schedulerControlPlane=
         except GracefulInterrupt:
             raise
         except Exception as error:
-            logger.exception(f"Scheduler pass failed inside background service: {error}")
+            logger.exception(
+                f"Scheduler pass failed inside background service: {error}"
+            )
 
     if schedulerControlPlane is not None:
         schedulerControlPlane.set_job_runner(execute_scheduler_pass)
@@ -378,7 +393,9 @@ def run_rebuild_series(args):
         intervalMinutes=args.interval_minutes,
         nowTimestamp=args.now_timestamp,
     )
-    logger.info(f"Historical utilization series rebuilt from local raw cache in '{outputPath}'")
+    logger.info(
+        f"Historical utilization series rebuilt from local raw cache in '{outputPath}'"
+    )
 
 
 def run_refresh_cluster_config(args):
@@ -392,7 +409,9 @@ def run_refresh_cluster_config(args):
 
 def run_set_forecast_data_dir(args):
     schedulerConfig = setSchedulerForecastDataDir(args.path)
-    logger.info(f"Scheduler forecast data directory was updated: {schedulerConfig.forecast_data_dir}")
+    logger.info(
+        f"Scheduler forecast data directory was updated: {schedulerConfig.forecast_data_dir}"
+    )
 
 
 def run_serve_web_panel(args):
