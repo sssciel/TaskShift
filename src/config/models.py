@@ -565,19 +565,14 @@ class AdminPanelAccessConfig:
     def loadConfig(self, filePath):
         from dotenv import dotenv_values
 
-        if not os.path.exists(filePath):
-            raise FileNotFoundError(
-                f"Configuration file '{filePath}' not found. Please create it using .env.example as a template."
-            )
-
-        config = dotenv_values(filePath)
-        token = config.get("ADMIN_PANEL_TOKEN")
+        config = dotenv_values(filePath) if os.path.exists(filePath) else {}
+        token = os.getenv("ADMIN_PANEL_TOKEN") or config.get("ADMIN_PANEL_TOKEN")
         self.token = token.strip() if token else None
         return self
 
     def requireToken(self) -> str:
         if not self.token:
-            raise ValueError("ADMIN_PANEL_TOKEN is not configured in configs/.env")
+            raise ValueError("ADMIN_PANEL_TOKEN is not configured in the environment or configs/.env")
 
         return self.token
 
@@ -590,18 +585,13 @@ class DBConfig:
         self.database = None
 
     def loadConfig(self, filePath):
-        from dotenv import load_dotenv
+        from dotenv import dotenv_values
 
-        if not os.path.exists(filePath):
-            raise FileNotFoundError(
-                f"Configuration file '{filePath}' not found. Please create it using .env.example as a template."
-            )
-
-        load_dotenv(filePath)
-        self.host = os.getenv("DB_HOST")
-        self.user = os.getenv("DB_USER")
-        self.password = os.getenv("DB_PASSWD")
-        self.database = os.getenv("DB_DATABASE")
+        config = dotenv_values(filePath) if os.path.exists(filePath) else {}
+        self.host = os.getenv("DB_HOST") or config.get("DB_HOST")
+        self.user = os.getenv("DB_USER") or config.get("DB_USER")
+        self.password = os.getenv("DB_PASSWD") or config.get("DB_PASSWD")
+        self.database = os.getenv("DB_DATABASE") or config.get("DB_DATABASE")
         return self
 
     def getParameters(self):

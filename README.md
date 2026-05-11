@@ -1,31 +1,42 @@
 ## TaskShift
 
-Python version: `3.11.12`
+TaskShift is a Python scheduler service for Slurm-based clusters with forecast-aware job launching and cluster configuration snapshots. It also includes a small admin web panel for inspecting the cluster state and editing runtime configuration files.
 
-### Docker
+### Requirements
 
-Build and run the scheduler loop:
+- Python `3.11`
+- Installed dependencies from [requirements.txt](/Users/ciel/study/hpc2026/repo/TaskShift/requirements.txt)
+- Config files in [configs](/Users/ciel/study/hpc2026/repo/TaskShift/configs): `scheduler.yaml`, `server.yaml`, `cluster.yaml`, `.env`
+- `ADMIN_PANEL_TOKEN` set in [configs/.env](/Users/ciel/study/hpc2026/repo/TaskShift/configs/.env) if you want to use the web panel
 
-```bash
-docker compose up --build
-```
+### Run
 
-Run a one-off scheduler pass:
-
-```bash
-docker compose run --rm taskshift run-scheduler-once
-```
-
-Run historical export:
+Install dependencies:
 
 ```bash
-docker compose run --rm taskshift export --output-dir=/app/exports/historical_utilization/current
+python3.11 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-The container uses:
+Run the scheduler with the web panel:
 
-- [configs](/Users/ciel/study/hpc2026/repo/TaskShift/configs) for configuration files
-- [logs](/Users/ciel/study/hpc2026/repo/TaskShift/logs) for append-only logs
-- [exports](/Users/ciel/study/hpc2026/repo/TaskShift/exports) for generated historical series
+```bash
+./taskshift schedule
+```
 
-If a real config file is missing, the container bootstraps it from the corresponding `*.example` file.
+Run the scheduler without the web panel:
+
+```bash
+./taskshift schedule --without-web-panel
+```
+
+Run only the web panel:
+
+```bash
+./taskshift serve-web-panel
+```
+
+### Web Panel Login
+
+Open the address from the startup log, usually [http://127.0.0.1:8000](http://127.0.0.1:8000), and sign in with `ADMIN_PANEL_TOKEN` from [configs/.env](/Users/ciel/study/hpc2026/repo/TaskShift/configs/.env). Use the panel to inspect the cluster, edit configs, and adjust scheduler-related settings.
