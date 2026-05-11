@@ -14,7 +14,9 @@ from .parsing import expand_hostlist, parse_timestamp
 
 def get_yaml_module():
     if yaml is None:
-        raise ModuleNotFoundError("pyyaml is required to load or save YAML configuration files.")
+        raise ModuleNotFoundError(
+            "pyyaml is required to load or save YAML configuration files."
+        )
 
     return yaml
 
@@ -121,7 +123,8 @@ class ClusterConfig:
                         end=parse_timestamp(period.get("end")),
                     )
                     for period in node_group.get("history", [])
-                ] or None,
+                ]
+                or None,
             )
             for node_group in config.get("node_groups", [])
         ]
@@ -141,7 +144,9 @@ class ClusterConfig:
 
     def loadFromSlurmText(self, slurmConfigText: str):
         nodesSection = self._extractSection(slurmConfigText, "# * NODES * #")
-        partitionsSection = self._extractSection(slurmConfigText, "# * PARTITIONS * #", required=False)
+        partitionsSection = self._extractSection(
+            slurmConfigText, "# * PARTITIONS * #", required=False
+        )
 
         self.gres_types = []
         self.node_groups = []
@@ -190,8 +195,12 @@ class ClusterConfig:
     def to_dict(self) -> dict:
         return {
             "gres_types": self.gres_types,
-            "node_groups": [self._node_group_to_dict(node_group) for node_group in self.node_groups],
-            "partitions": [self._partition_to_dict(partition) for partition in self.partitions],
+            "node_groups": [
+                self._node_group_to_dict(node_group) for node_group in self.node_groups
+            ],
+            "partitions": [
+                self._partition_to_dict(partition) for partition in self.partitions
+            ],
         }
 
     def getFeatureNames(self) -> list[str]:
@@ -202,7 +211,9 @@ class ClusterConfig:
         return sorted(featureNames)
 
     def getFeatureCapacitiesAt(self, timestamp: int) -> dict[str, dict[str, int]]:
-        capacities = {feature: {"cpu": 0, "gpu": 0} for feature in self.getFeatureNames()}
+        capacities = {
+            feature: {"cpu": 0, "gpu": 0} for feature in self.getFeatureNames()
+        }
 
         for node_group in self.node_groups:
             activeNodeCount = node_group.get_node_count_at(timestamp)
@@ -211,8 +222,12 @@ class ClusterConfig:
 
             for feature in node_group.features:
                 capacities.setdefault(feature, {"cpu": 0, "gpu": 0})
-                capacities[feature]["cpu"] += activeNodeCount * node_group.resources.cpu_cores
-                capacities[feature]["gpu"] += activeNodeCount * node_group.resources.gpus
+                capacities[feature]["cpu"] += (
+                    activeNodeCount * node_group.resources.cpu_cores
+                )
+                capacities[feature]["gpu"] += (
+                    activeNodeCount * node_group.resources.gpus
+                )
 
         return capacities
 
@@ -229,7 +244,9 @@ class ClusterConfig:
 
         return capacities
 
-    def getClusterCapacitiesForFeaturesAt(self, timestamp: int, featureNames: set[str]) -> dict[str, int]:
+    def getClusterCapacitiesForFeaturesAt(
+        self, timestamp: int, featureNames: set[str]
+    ) -> dict[str, int]:
         capacities = {"cpu": 0, "gpu": 0}
         if not featureNames:
             return capacities
@@ -274,7 +291,9 @@ class ClusterConfig:
 
         return None
 
-    def getPartitionNodeNames(self, partitionName: str | None, timestamp: int) -> set[str] | None:
+    def getPartitionNodeNames(
+        self, partitionName: str | None, timestamp: int
+    ) -> set[str] | None:
         partition = self.getPartition(partitionName)
         if partition is None:
             return None
@@ -289,7 +308,9 @@ class ClusterConfig:
             if nodeName in activeNodeNames
         }
 
-    def getPartitionFeatureNames(self, partitionName: str | None, timestamp: int) -> list[str]:
+    def getPartitionFeatureNames(
+        self, partitionName: str | None, timestamp: int
+    ) -> list[str]:
         allowedNodeNames = self.getPartitionNodeNames(partitionName, timestamp)
         if allowedNodeNames is None:
             return self.getFeatureNames()
@@ -311,7 +332,9 @@ class ClusterConfig:
 
         return featureCounts
 
-    def getFeatureCapacitiesForHostlist(self, hostlist: str, timestamp: int | None = None) -> dict[str, dict[str, int]]:
+    def getFeatureCapacitiesForHostlist(
+        self, hostlist: str, timestamp: int | None = None
+    ) -> dict[str, dict[str, int]]:
         featureCapacities = {}
         nodeCapacitiesMap = self.getNodeCapacitiesForHostlist(hostlist, timestamp)
 
@@ -324,7 +347,9 @@ class ClusterConfig:
 
         return featureCapacities
 
-    def getNodeCapacitiesForHostlist(self, hostlist: str, timestamp: int | None = None) -> dict[str, dict]:
+    def getNodeCapacitiesForHostlist(
+        self, hostlist: str, timestamp: int | None = None
+    ) -> dict[str, dict]:
         if timestamp is None:
             sourceCapacities = self._get_node_capacities_map()
         else:
@@ -413,7 +438,9 @@ class ClusterConfig:
 
         return result
 
-    def _extractSection(self, slurmConfigText: str, marker: str, required: bool = True) -> list[str]:
+    def _extractSection(
+        self, slurmConfigText: str, marker: str, required: bool = True
+    ) -> list[str]:
         lines = slurmConfigText.splitlines()
         startIndex = None
 
@@ -424,7 +451,9 @@ class ClusterConfig:
 
         if startIndex is None:
             if required:
-                raise ValueError(f"Could not find '{marker}' section in slurm.conf output.")
+                raise ValueError(
+                    f"Could not find '{marker}' section in slurm.conf output."
+                )
 
             return []
 
@@ -486,7 +515,9 @@ class ClusterConfig:
             name=parts["PartitionName"],
             nodes=parts["Nodes"],
             state=parts.get("State"),
-            max_cpus_per_node=int(parts["MaxCPUsPerNode"]) if "MaxCPUsPerNode" in parts else None,
+            max_cpus_per_node=int(parts["MaxCPUsPerNode"])
+            if "MaxCPUsPerNode" in parts
+            else None,
             max_nodes=int(parts["MaxNodes"]) if "MaxNodes" in parts else None,
         )
 
@@ -494,11 +525,18 @@ class ClusterConfig:
         if not gresValue:
             return 0
 
-        match = re.search(r"gpu:(\d+)", gresValue)
-        if match is None:
-            return 0
+        # Match both formats: "gpu:4" and "gpu:v100:4"
+        # Try format with type first: gpu:TYPE:COUNT
+        match = re.search(r"gpu:[^:]*:(\d+)", gresValue)
+        if match:
+            return int(match.group(1))
 
-        return int(match.group(1))
+        # Try format without type: gpu:COUNT
+        match = re.search(r"gpu:(\d+)", gresValue)
+        if match:
+            return int(match.group(1))
+
+        return 0
 
     def _countNodes(self, nodePattern: str) -> int:
         match = re.search(r"\[(.+)\]", nodePattern)
@@ -572,7 +610,9 @@ class AdminPanelAccessConfig:
 
     def requireToken(self) -> str:
         if not self.token:
-            raise ValueError("ADMIN_PANEL_TOKEN is not configured in the environment or configs/.env")
+            raise ValueError(
+                "ADMIN_PANEL_TOKEN is not configured in the environment or configs/.env"
+            )
 
         return self.token
 
@@ -616,10 +656,14 @@ class SchedulerConfig:
         self.max_launched_jobs = None
         self.forecast_enabled = self.DEFAULT_FORECAST_ENABLED
         self.forecast_data_dir = self.DEFAULT_FORECAST_DATA_DIR
-        self.cluster_config_snapshot_interval_hours = self.DEFAULT_CLUSTER_CONFIG_SNAPSHOT_INTERVAL_HOURS
+        self.cluster_config_snapshot_interval_hours = (
+            self.DEFAULT_CLUSTER_CONFIG_SNAPSHOT_INTERVAL_HOURS
+        )
         self.web_panel_enabled = self.DEFAULT_WEB_PANEL_ENABLED
         self.hot_reload_enabled = self.DEFAULT_HOT_RELOAD_ENABLED
-        self.cluster_config_refresh_command = list(self.DEFAULT_CLUSTER_CONFIG_REFRESH_COMMAND)
+        self.cluster_config_refresh_command = list(
+            self.DEFAULT_CLUSTER_CONFIG_REFRESH_COMMAND
+        )
 
     def loadConfig(self, filePath):
         if not os.path.exists(filePath):
@@ -632,16 +676,27 @@ class SchedulerConfig:
 
         self.timelimit = config["timelimit"]
         self.max_launched_jobs = config.get("max_launched_jobs")
-        self.forecast_enabled = config.get("forecast_enabled", self.DEFAULT_FORECAST_ENABLED)
-        self.forecast_data_dir = config.get("forecast_data_dir", self.DEFAULT_FORECAST_DATA_DIR)
+        self.forecast_enabled = config.get(
+            "forecast_enabled", self.DEFAULT_FORECAST_ENABLED
+        )
+        self.forecast_data_dir = config.get(
+            "forecast_data_dir", self.DEFAULT_FORECAST_DATA_DIR
+        )
         self.cluster_config_snapshot_interval_hours = config.get(
             "cluster_config_snapshot_interval_hours",
             self.DEFAULT_CLUSTER_CONFIG_SNAPSHOT_INTERVAL_HOURS,
         )
-        self.web_panel_enabled = config.get("web_panel_enabled", self.DEFAULT_WEB_PANEL_ENABLED)
-        self.hot_reload_enabled = config.get("hot_reload_enabled", self.DEFAULT_HOT_RELOAD_ENABLED)
+        self.web_panel_enabled = config.get(
+            "web_panel_enabled", self.DEFAULT_WEB_PANEL_ENABLED
+        )
+        self.hot_reload_enabled = config.get(
+            "hot_reload_enabled", self.DEFAULT_HOT_RELOAD_ENABLED
+        )
         self.cluster_config_refresh_command = self._normalize_command(
-            config.get("cluster_config_refresh_command", self.DEFAULT_CLUSTER_CONFIG_REFRESH_COMMAND)
+            config.get(
+                "cluster_config_refresh_command",
+                self.DEFAULT_CLUSTER_CONFIG_REFRESH_COMMAND,
+            )
         )
         return self
 
@@ -671,7 +726,9 @@ class SchedulerConfig:
             result["forecast_data_dir"] = self.forecast_data_dir
 
         if self.cluster_config_snapshot_interval_hours is not None:
-            result["cluster_config_snapshot_interval_hours"] = self.cluster_config_snapshot_interval_hours
+            result["cluster_config_snapshot_interval_hours"] = (
+                self.cluster_config_snapshot_interval_hours
+            )
 
         if self.web_panel_enabled is not None:
             result["web_panel_enabled"] = bool(self.web_panel_enabled)
@@ -680,7 +737,9 @@ class SchedulerConfig:
             result["hot_reload_enabled"] = bool(self.hot_reload_enabled)
 
         if self.cluster_config_refresh_command:
-            result["cluster_config_refresh_command"] = list(self.cluster_config_refresh_command)
+            result["cluster_config_refresh_command"] = list(
+                self.cluster_config_refresh_command
+            )
 
         return result
 
@@ -690,7 +749,9 @@ class SchedulerConfig:
         clone.max_launched_jobs = self.max_launched_jobs
         clone.forecast_enabled = self.forecast_enabled
         clone.forecast_data_dir = self.forecast_data_dir
-        clone.cluster_config_snapshot_interval_hours = self.cluster_config_snapshot_interval_hours
+        clone.cluster_config_snapshot_interval_hours = (
+            self.cluster_config_snapshot_interval_hours
+        )
         clone.web_panel_enabled = self.web_panel_enabled
         clone.hot_reload_enabled = self.hot_reload_enabled
         clone.cluster_config_refresh_command = list(self.cluster_config_refresh_command)
@@ -704,9 +765,13 @@ class SchedulerConfig:
             return shlex.split(commandValue)
 
         if isinstance(commandValue, (list, tuple)):
-            normalized = [str(part).strip() for part in commandValue if str(part).strip()]
+            normalized = [
+                str(part).strip() for part in commandValue if str(part).strip()
+            ]
             if not normalized:
                 raise ValueError("cluster_config_refresh_command must not be empty")
             return normalized
 
-        raise ValueError("cluster_config_refresh_command must be either a shell string or a YAML list")
+        raise ValueError(
+            "cluster_config_refresh_command must be either a shell string or a YAML list"
+        )

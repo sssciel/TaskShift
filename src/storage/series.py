@@ -51,7 +51,9 @@ class _ClusterConfigTimeline:
 
     @classmethod
     def load_default(cls, currentTimestamp: int | None = None):
-        return cls(loadClusterConfigTimelineSnapshots(currentTimestamp=currentTimestamp))
+        return cls(
+            loadClusterConfigTimelineSnapshots(currentTimestamp=currentTimestamp)
+        )
 
     def getConfigAt(self, timestamp: int):
         snapshotIndex = bisect_right(self.timestamps, int(timestamp)) - 1
@@ -66,7 +68,11 @@ class _ClusterConfigTimeline:
 
         boundaryStart = bisect_right(self.timestamps, int(startTimestamp))
         boundaryEnd = bisect_left(self.timestamps, int(endTimestamp))
-        boundaries = [int(startTimestamp), *self.timestamps[boundaryStart:boundaryEnd], int(endTimestamp)]
+        boundaries = [
+            int(startTimestamp),
+            *self.timestamps[boundaryStart:boundaryEnd],
+            int(endTimestamp),
+        ]
         for index in range(len(boundaries) - 1):
             segmentStart = boundaries[index]
             segmentEnd = boundaries[index + 1]
@@ -102,7 +108,9 @@ def build_historical_utilization_series(
             if unfinishedJobs:
                 nowTimestamp = int(datetime.now().timestamp())
             else:
-                nowTimestamp = max(max(job.timeStart, job.timeEnd, job.modTime) for job in activeJobs)
+                nowTimestamp = max(
+                    max(job.timeStart, job.timeEnd, job.modTime) for job in activeJobs
+                )
 
     clusterConfigTimeline = (
         _ClusterConfigTimeline.from_cluster_config(clusterConfig)
@@ -212,7 +220,9 @@ def export_historical_utilization_series(
             ensure_ascii=False,
         )
 
-    logger.success(f"Exported {len(exportedFiles)} utilization series files to '{outputPath}'")
+    logger.success(
+        f"Exported {len(exportedFiles)} utilization series files to '{outputPath}'"
+    )
     return outputPath
 
 
@@ -235,7 +245,11 @@ def _build_feature_events(
             continue
 
         resolvedAnySegment = False
-        for segmentStart, segmentEnd, segmentConfig in clusterConfigTimeline.iterSegments(job.timeStart, endTimestamp):
+        for (
+            segmentStart,
+            segmentEnd,
+            segmentConfig,
+        ) in clusterConfigTimeline.iterSegments(job.timeStart, endTimestamp):
             featureShares = _resolve_job_feature_resource_shares(
                 job=job,
                 clusterConfig=segmentConfig,
@@ -249,7 +263,10 @@ def _build_feature_events(
             allocatedCpus = job.getAllocatedCpus()
             allocatedGpus = job.getAllocatedGpus()
             for feature, shares in featureShares.items():
-                effectiveStart = max(segmentStart, forcedFeatureStartTimestamps.get(feature, segmentStart))
+                effectiveStart = max(
+                    segmentStart,
+                    forcedFeatureStartTimestamps.get(feature, segmentStart),
+                )
                 if segmentEnd <= effectiveStart:
                     continue
 
@@ -267,7 +284,15 @@ def _build_feature_events(
     return featureEvents, diagnostics
 
 
-def _build_feature_series(feature, featureEvents, clusterConfigTimeline, rangeStart, rangeEnd, intervalSeconds, commissionTimestamp=None):
+def _build_feature_series(
+    feature,
+    featureEvents,
+    clusterConfigTimeline,
+    rangeStart,
+    rangeEnd,
+    intervalSeconds,
+    commissionTimestamp=None,
+):
     sortedEventTimestamps = sorted(featureEvents.keys())
     eventIndex = 0
     currentCpuLoad = 0.0
@@ -275,7 +300,10 @@ def _build_feature_series(feature, featureEvents, clusterConfigTimeline, rangeSt
     featureSeries = []
 
     for timestamp in range(rangeStart, rangeEnd + intervalSeconds, intervalSeconds):
-        while eventIndex < len(sortedEventTimestamps) and sortedEventTimestamps[eventIndex] <= timestamp:
+        while (
+            eventIndex < len(sortedEventTimestamps)
+            and sortedEventTimestamps[eventIndex] <= timestamp
+        ):
             event = featureEvents[sortedEventTimestamps[eventIndex]]
             currentCpuLoad += event["cpu"]
             currentGpuLoad += event["gpu"]
@@ -284,9 +312,13 @@ def _build_feature_series(feature, featureEvents, clusterConfigTimeline, rangeSt
         if commissionTimestamp is not None and timestamp < commissionTimestamp:
             capacities = {"cpu": 0, "gpu": 0}
         else:
-            capacities = clusterConfigTimeline.getConfigAt(timestamp).getFeatureCapacitiesAt(timestamp).get(
-                feature,
-                {"cpu": 0, "gpu": 0},
+            capacities = (
+                clusterConfigTimeline.getConfigAt(timestamp)
+                .getFeatureCapacitiesAt(timestamp)
+                .get(
+                    feature,
+                    {"cpu": 0, "gpu": 0},
+                )
             )
         featureSeries.append(
             {
@@ -296,10 +328,15 @@ def _build_feature_series(feature, featureEvents, clusterConfigTimeline, rangeSt
             }
         )
 
+    # Clean up overflow points (trim corrupted data + clip remaining overflows)
+    featureSeries = _cleanup_overflow_points(featureSeries)
+
     return featureSeries
 
 
-def _build_overall_events(featureLoads: dict[str, dict[int, dict[str, float]]]) -> dict[int, dict[str, float]]:
+def _build_overall_events(
+    featureLoads: dict[str, dict[int, dict[str, float]]],
+) -> dict[int, dict[str, float]]:
     overallEvents = defaultdict(lambda: {"cpu": 0.0, "gpu": 0.0})
 
     for featureEvents in featureLoads.values():
@@ -326,7 +363,10 @@ def _build_overall_series(
     overallSeries = []
 
     for timestamp in range(rangeStart, rangeEnd + intervalSeconds, intervalSeconds):
-        while eventIndex < len(sortedEventTimestamps) and sortedEventTimestamps[eventIndex] <= timestamp:
+        while (
+            eventIndex < len(sortedEventTimestamps)
+            and sortedEventTimestamps[eventIndex] <= timestamp
+        ):
             event = overallEvents[sortedEventTimestamps[eventIndex]]
             currentCpuLoad += event["cpu"]
             currentGpuLoad += event["gpu"]
@@ -337,7 +377,9 @@ def _build_overall_series(
             for feature in allowedFeatures
             if forcedFeatureStartTimestamps.get(feature, 0) <= timestamp
         }
-        capacities = clusterConfigTimeline.getConfigAt(timestamp).getClusterCapacitiesForFeaturesAt(
+        capacities = clusterConfigTimeline.getConfigAt(
+            timestamp
+        ).getClusterCapacitiesForFeaturesAt(
             timestamp,
             activeFeatures,
         )
@@ -357,6 +399,71 @@ def _calculate_utilization(usedCapacity: float, totalCapacity: int) -> float:
         return 0.0
 
     return round((usedCapacity / totalCapacity) * 100, 2)
+
+
+def _cleanup_overflow_points(series: list[dict]) -> list[dict]:
+    """
+    Clean up overflow points in utilization series using a two-step strategy:
+
+    1. **Trim corrupted data**: Remove consecutive overflow points at the beginning
+       of the series. These are considered corrupted data (e.g., due to missing
+       configuration snapshots for old jobs).
+
+    2. **Clip remaining overflows**: For any remaining overflow points, clip to 100%.
+       These might be minor artifacts or rounding issues.
+
+    Args:
+        series: List of {"time": str, "cpu": float, "gpu": float} points
+
+    Returns:
+        Cleaned series with overflow handled
+    """
+    if not series:
+        return series
+
+    # Step 1: Find the last consecutive overflow point from the start
+    # Overflow = cpu > 100 OR gpu > 100
+    last_consecutive_overflow_index = -1
+
+    for i, point in enumerate(series):
+        cpu = point.get("cpu", 0.0)
+        gpu = point.get("gpu", 0.0)
+
+        if cpu > 100.0 or gpu > 100.0:
+            last_consecutive_overflow_index = i
+        else:
+            # First non-overflow point - stop looking for consecutive overflows
+            break
+
+    # Step 2: Trim the series if we found consecutive overflows at the start
+    if last_consecutive_overflow_index >= 0:
+        # Remove all points up to and including the last consecutive overflow
+        series = series[last_consecutive_overflow_index + 1 :]
+        logger.warning(
+            f"Trimmed {last_consecutive_overflow_index + 1} consecutive overflow points "
+            f"from the beginning of utilization series"
+        )
+
+    # Step 3: Clip any remaining overflow points to 100%
+    clipped_count = 0
+    for point in series:
+        cpu = point.get("cpu", 0.0)
+        gpu = point.get("gpu", 0.0)
+
+        if cpu > 100.0:
+            point["cpu"] = 100.0
+            clipped_count += 1
+
+        if gpu > 100.0:
+            point["gpu"] = 100.0
+            clipped_count += 1
+
+    if clipped_count > 0:
+        logger.warning(
+            f"Clipped {clipped_count} overflow points to 100% in utilization series"
+        )
+
+    return series
 
 
 def _count_overflow_points(series: dict[str, list[dict]]) -> dict[str, int]:
@@ -382,7 +489,9 @@ def _resolve_job_feature_resource_shares(
     if not job.hasAssignedNodes():
         return {}
 
-    featureCapacities = clusterConfig.getFeatureCapacitiesForHostlist(job.nodelist, timestamp=timestamp)
+    featureCapacities = clusterConfig.getFeatureCapacitiesForHostlist(
+        job.nodelist, timestamp=timestamp
+    )
     if allowedFeatures is not None:
         featureCapacities = {
             feature: capacity
@@ -446,11 +555,7 @@ def _log_job_diagnostics(diagnostics: dict):
     if not diagnostics:
         return
 
-    problematicJobs = {
-        key: value
-        for key, value in diagnostics.items()
-        if value > 0
-    }
+    problematicJobs = {key: value for key, value in diagnostics.items() if value > 0}
     if not problematicJobs:
         return
 
@@ -480,7 +585,11 @@ def _normalize_historical_jobs(jobs):
 
     return sorted(
         jobsByLogicalKey.values(),
-        key=lambda job: (job.timeStart, job.jobID, job.dbIndex if job.dbIndex is not None else -1),
+        key=lambda job: (
+            job.timeStart,
+            job.jobID,
+            job.dbIndex if job.dbIndex is not None else -1,
+        ),
     )
 
 
