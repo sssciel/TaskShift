@@ -30,7 +30,7 @@ window.__TASKSHIFT_APP_TRANSLATIONS__ = {
       "Дерево типов узлов, групп узлов, партиций и выбор источника конфигурации.",
     "tab.configs.label": "Конфиги",
     "tab.configs.caption":
-      "Редактирование `scheduler.yaml`, `server.yaml`, активного cluster config и `.env`.",
+      "Редактирование `scheduler.yaml`, `server.yaml` и активного cluster config.",
     "tab.calendars.label": "Календари",
     "tab.calendars.caption":
       "Редактирование календарей по годам, добавление новых лет и файлов.",
@@ -55,7 +55,7 @@ window.__TASKSHIFT_APP_TRANSLATIONS__ = {
       "Активный снимок кластера, источник конфигурации и дерево нод/партиций.",
     "panel.configs.title": "Редактор конфигов",
     "panel.configs.subtitle":
-      "Прямое редактирование scheduler, server, active cluster config и environment.",
+      "Прямое редактирование scheduler, server и active cluster config.",
     "panel.calendars.title": "Конфиги календарей",
     "panel.calendars.subtitle":
       "Редактирование календарей по годам с динамическим обнаружением файлов.",
@@ -206,7 +206,6 @@ window.__TASKSHIFT_APP_TRANSLATIONS__ = {
     "config.cluster_active": "Активный cluster config",
     "config.scheduler": "Конфиг планировщика",
     "config.server": "Конфиг веб-сервера",
-    "config.env": "Окружение",
     "cal.discovery.title": "Обнаружение календарей",
     "cal.discovery.desc":
       "Файлы календарей определяются динамически по `configs/calendar/<year>/*.yaml`. Если в каком-то году появляется новый файл, панель автоматически считает его новым типом календаря.",
@@ -277,7 +276,7 @@ window.__TASKSHIFT_APP_TRANSLATIONS__ = {
       "Node type tree, node groups, partitions, active snapshot source.",
     "tab.configs.label": "Configs",
     "tab.configs.caption":
-      "Edit `scheduler.yaml`, `server.yaml`, active cluster config and `.env`.",
+      "Edit `scheduler.yaml`, `server.yaml`, and the active cluster config.",
     "tab.calendars.label": "Calendars",
     "tab.calendars.caption":
       "Edit calendar configs by year, add new years, and discover new calendar files.",
@@ -302,7 +301,7 @@ window.__TASKSHIFT_APP_TRANSLATIONS__ = {
       "Active cluster snapshot, config source selection, and node/partition tree.",
     "panel.configs.title": "Config editor",
     "panel.configs.subtitle":
-      "Direct file editing for scheduler, server, active cluster config, and environment.",
+      "Direct file editing for scheduler, server, and the active cluster config.",
     "panel.calendars.title": "Calendar configs",
     "panel.calendars.subtitle":
       "Year-aware calendar editing with dynamic file discovery and creation.",
@@ -450,7 +449,6 @@ window.__TASKSHIFT_APP_TRANSLATIONS__ = {
     "config.cluster_active": "Active cluster config",
     "config.scheduler": "Scheduler config",
     "config.server": "Web server config",
-    "config.env": "Environment",
     "cal.discovery.title": "Calendar discovery",
     "cal.discovery.desc":
       "Calendar files are discovered dynamically by scanning `configs/calendar/<year>/*.yaml`. If a new file appears in any year, it becomes a known calendar type here automatically.",

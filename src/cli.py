@@ -20,6 +20,7 @@ from config import (
     setSchedulerForecastDataDir,
 )
 from config.logger import setup_logger
+from forecast.training import train_gradient_boosting_forecast
 from scheduler import Scheduler, SlurmConnector
 from scheduler.cron import (
     SCHEDULER_INTERVAL_MINUTES,
@@ -164,6 +165,26 @@ def build_parser():
         help="Optional end timestamp for currently running jobs. Accepts unix timestamp or ISO datetime",
     )
 
+    trainForecastParser = subparsers.add_parser(
+        "train-forecast-model",
+        help="Refresh exported utilization data and train the GPU forecast model artifact",
+    )
+    trainForecastParser.add_argument(
+        "--data-dir",
+        default=None,
+        help="Directory with exported historical utilization data. Defaults to scheduler forecast_data_dir",
+    )
+    trainForecastParser.add_argument(
+        "--model-dir",
+        default=None,
+        help="Directory where the trained forecast model artifact should be stored. Defaults to scheduler forecast_model_dir",
+    )
+    trainForecastParser.add_argument(
+        "--skip-export",
+        action="store_true",
+        help="Train the model from the existing export without refreshing historical utilization first",
+    )
+
     return parser
 
 
@@ -192,11 +213,23 @@ def resolve_forecast_data_dir(args, schedulerConfig=None) -> str | None:
     return resolve_project_path(effectiveSchedulerConfig.forecast_data_dir)
 
 
-def resolve_export_output_dir(args) -> str | None:
+def resolve_export_output_dir(args, schedulerConfig=None) -> str | None:
+    if getattr(args, "data_dir", None):
+        return resolve_project_path(args.data_dir)
+
     if getattr(args, "output_dir", None):
         return resolve_project_path(args.output_dir)
 
-    return resolve_project_path(getSchedulerConfig().forecast_data_dir)
+    effectiveSchedulerConfig = schedulerConfig or getSchedulerConfig()
+    return resolve_project_path(effectiveSchedulerConfig.forecast_data_dir)
+
+
+def resolve_forecast_model_dir(args=None, schedulerConfig=None) -> str | None:
+    if args is not None and getattr(args, "model_dir", None):
+        return resolve_project_path(args.model_dir)
+
+    effectiveSchedulerConfig = schedulerConfig or getSchedulerConfig()
+    return resolve_project_path(effectiveSchedulerConfig.forecast_model_dir)
 
 
 def resolve_cluster_refresh_command(schedulerConfig=None) -> list[str]:
@@ -346,6 +379,23 @@ def run_scheduler_loop(args, schedulerRuntimeConfig=None, schedulerControlPlane=
         logger.info(f"Scheduler tick finished | trigger={trigger}")
         return summary
 
+    def train_forecast_model_job():
+        effectiveSchedulerConfig = (
+            schedulerRuntimeConfig.get_config()
+            if schedulerRuntimeConfig is not None
+            else getSchedulerConfig()
+        )
+        if getattr(args, "without_forecast", False):
+            logger.info("Scheduled forecast model training skipped because forecast is disabled by CLI flag")
+            return None
+        if not effectiveSchedulerConfig.forecast_enabled:
+            logger.info("Scheduled forecast model training skipped because forecast is disabled in scheduler config")
+            return None
+        return run_train_forecast_model(
+            schedulerConfig=effectiveSchedulerConfig,
+            refreshData=True,
+        )
+
     def job_runner():
         try:
             return execute_scheduler_pass(trigger="scheduled")
@@ -360,11 +410,30 @@ def run_scheduler_loop(args, schedulerRuntimeConfig=None, schedulerControlPlane=
         schedulerControlPlane.set_job_runner(execute_scheduler_pass)
 
     logger.info("Starting scheduler loop in foreground. Stop with Ctrl+C")
+    backgroundJobs = []
+    effectiveSchedulerConfig = (
+        schedulerRuntimeConfig.get_config()
+        if schedulerRuntimeConfig is not None
+        else getSchedulerConfig()
+    )
+    if not getattr(args, "without_forecast", False) and effectiveSchedulerConfig.forecast_enabled:
+        backgroundJobs.append(
+            {
+                "id": "taskshift-forecast-model-training",
+                "kind": "cron",
+                "runner": train_forecast_model_job,
+                "day_of_week": "tue,fri",
+                "hour": 0,
+                "minute": 0,
+                "misfire_grace_time": 12 * 60 * 60,
+            }
+        )
     run_scheduler_service_loop(
         jobRunner=job_runner,
         projectRoot=get_default_project_root(),
         runImmediately=True,
         schedulerController=schedulerControlPlane,
+        backgroundJobs=backgroundJobs,
     )
 
 
@@ -396,6 +465,35 @@ def run_rebuild_series(args):
     logger.info(
         f"Historical utilization series rebuilt from local raw cache in '{outputPath}'"
     )
+
+
+def run_train_forecast_model(args=None, schedulerConfig=None, refreshData: bool | None = None):
+    effectiveSchedulerConfig = schedulerConfig or getSchedulerConfig()
+    dataDir = resolve_export_output_dir(args or argparse.Namespace(), effectiveSchedulerConfig)
+    modelDir = resolve_forecast_model_dir(args=args, schedulerConfig=effectiveSchedulerConfig)
+    if not dataDir:
+        raise RuntimeError("Forecast data directory is not configured")
+    if not modelDir:
+        raise RuntimeError("Forecast model directory is not configured")
+
+    shouldRefreshData = refreshData
+    if shouldRefreshData is None:
+        shouldRefreshData = not getattr(args, "skip_export", False)
+
+    artifact = train_gradient_boosting_forecast(
+        dataDir=dataDir,
+        modelDir=modelDir,
+        projectRoot=get_default_project_root(),
+        refreshData=bool(shouldRefreshData),
+    )
+    logger.info(
+        "Forecast model training finished: "
+        f"model_kind={artifact.metadata.get('model_kind')} "
+        f"target={artifact.metadata.get('target_name')} "
+        f"trained_at={artifact.metadata.get('trained_at')} "
+        f"cached_gpu_prediction={artifact.metadata.get('last_prediction_gpu_percent')}"
+    )
+    return artifact
 
 
 def run_refresh_cluster_config(args):
@@ -461,6 +559,10 @@ def main():
 
         if args.command == "rebuild-series":
             run_rebuild_series(args)
+            return 0
+
+        if args.command == "train-forecast-model":
+            run_train_forecast_model(args)
             return 0
 
         parser.error(f"Unknown command: {args.command}")

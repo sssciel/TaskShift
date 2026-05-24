@@ -674,6 +674,8 @@ class DBConfig:
 class SchedulerConfig:
     DEFAULT_FORECAST_ENABLED = False
     DEFAULT_FORECAST_DATA_DIR = "exports/historical_utilization/current"
+    DEFAULT_FORECAST_MODEL_DIR = "artifacts/forecast_model"
+    DEFAULT_FORECAST_SKIP_STARTUP_TRAINING = False
     DEFAULT_CLUSTER_CONFIG_SNAPSHOT_INTERVAL_HOURS = 24
     DEFAULT_WEB_PANEL_ENABLED = True
     DEFAULT_HOT_RELOAD_ENABLED = False
@@ -686,6 +688,10 @@ class SchedulerConfig:
         self.max_launched_jobs = None
         self.forecast_enabled = self.DEFAULT_FORECAST_ENABLED
         self.forecast_data_dir = self.DEFAULT_FORECAST_DATA_DIR
+        self.forecast_model_dir = self.DEFAULT_FORECAST_MODEL_DIR
+        self.forecast_skip_startup_training = (
+            self.DEFAULT_FORECAST_SKIP_STARTUP_TRAINING
+        )
         self.cluster_config_snapshot_interval_hours = (
             self.DEFAULT_CLUSTER_CONFIG_SNAPSHOT_INTERVAL_HOURS
         )
@@ -713,6 +719,13 @@ class SchedulerConfig:
         )
         self.forecast_data_dir = config.get(
             "forecast_data_dir", self.DEFAULT_FORECAST_DATA_DIR
+        )
+        self.forecast_model_dir = config.get(
+            "forecast_model_dir", self.DEFAULT_FORECAST_MODEL_DIR
+        )
+        self.forecast_skip_startup_training = config.get(
+            "forecast_skip_startup_training",
+            self.DEFAULT_FORECAST_SKIP_STARTUP_TRAINING,
         )
         self.cluster_config_snapshot_interval_hours = config.get(
             "cluster_config_snapshot_interval_hours",
@@ -764,6 +777,14 @@ class SchedulerConfig:
         if self.forecast_data_dir is not None:
             result["forecast_data_dir"] = self.forecast_data_dir
 
+        if self.forecast_model_dir is not None:
+            result["forecast_model_dir"] = self.forecast_model_dir
+
+        if self.forecast_skip_startup_training is not None:
+            result["forecast_skip_startup_training"] = bool(
+                self.forecast_skip_startup_training
+            )
+
         if self.cluster_config_snapshot_interval_hours is not None:
             result["cluster_config_snapshot_interval_hours"] = (
                 self.cluster_config_snapshot_interval_hours
@@ -796,6 +817,10 @@ class SchedulerConfig:
         clone.max_launched_jobs = self.max_launched_jobs
         clone.forecast_enabled = self.forecast_enabled
         clone.forecast_data_dir = self.forecast_data_dir
+        clone.forecast_model_dir = self.forecast_model_dir
+        clone.forecast_skip_startup_training = (
+            self.forecast_skip_startup_training
+        )
         clone.cluster_config_snapshot_interval_hours = (
             self.cluster_config_snapshot_interval_hours
         )

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from config import DBConfigFile, getLatestClusterConfigFile, schedulerConfigFile, serverConfigFile
+from config import getLatestClusterConfigFile, schedulerConfigFile, serverConfigFile
 from config.models import get_yaml_module
 
 
@@ -23,12 +23,6 @@ def get_config_targets() -> list[dict]:
             "label": "Web server config",
             "path": str(Path(serverConfigFile).resolve()),
             "description": "Host and port for the admin panel.",
-        },
-        {
-            "id": "env",
-            "label": "Environment",
-            "path": str(Path(DBConfigFile).resolve()),
-            "description": "Database credentials and ADMIN_PANEL_TOKEN.",
         },
     ]
 
@@ -70,7 +64,4 @@ def write_config_target(targetId: str, content: str) -> dict:
 
 
 def validate_config_content(targetId: str, content: str):
-    if targetId == "env":
-        return
-
     get_yaml_module().safe_load(content or "")

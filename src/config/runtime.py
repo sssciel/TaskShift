@@ -18,6 +18,8 @@ HOT_RELOADABLE_SCHEDULER_FIELDS = (
     "max_launched_jobs",
     "forecast_enabled",
     "forecast_data_dir",
+    "forecast_model_dir",
+    "forecast_skip_startup_training",
     "cluster_config_snapshot_interval_hours",
 )
 

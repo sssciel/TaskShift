@@ -102,9 +102,11 @@ def run_scheduler_service_loop(
     projectRoot: str,
     runImmediately: bool = False,
     schedulerController=None,
+    backgroundJobs: list[dict] | None = None,
 ):
     try:
         from apscheduler.schedulers.blocking import BlockingScheduler
+        from apscheduler.triggers.cron import CronTrigger
         from apscheduler.triggers.interval import IntervalTrigger
     except ModuleNotFoundError as error:
         raise ModuleNotFoundError("apscheduler is required to run the background scheduler service.") from error
@@ -136,6 +138,26 @@ def run_scheduler_service_loop(
         misfire_grace_time=SCHEDULER_INTERVAL_MINUTES * 60,
         next_run_time=nextRunAt,
     )
+
+    for backgroundJob in backgroundJobs or []:
+        jobKind = backgroundJob.get("kind", "cron")
+        if jobKind == "cron":
+            scheduler.add_job(
+                backgroundJob["runner"],
+                trigger=CronTrigger(
+                    day_of_week=backgroundJob["day_of_week"],
+                    hour=backgroundJob.get("hour", 0),
+                    minute=backgroundJob.get("minute", 0),
+                ),
+                id=backgroundJob["id"],
+                replace_existing=True,
+                coalesce=True,
+                max_instances=1,
+                misfire_grace_time=backgroundJob.get("misfire_grace_time"),
+            )
+            continue
+
+        raise ValueError(f"Unsupported background job kind: {jobKind}")
 
     def handle_stop(signum, frame):
         logger.info("Stopping TaskShift scheduler service")

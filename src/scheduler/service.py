@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+from pathlib import Path
 
 try:
     from loguru import logger
@@ -38,7 +39,14 @@ class Scheduler:
     ):
         self.config = schedulerConfig or getSchedulerConfig()
         self.clusterConfig = getClusterConfig()
-        self.forecastService = ForecastService(dataDir=forecastDataDir)
+        self.forecastService = None
+        if forecastDataDir is not None:
+            self.forecastService = ForecastService(
+                dataDir=forecastDataDir,
+                modelDir=getattr(self.config, "forecast_model_dir", None),
+                schedulerConfig=self.config,
+                projectRoot=Path(__file__).resolve().parents[2],
+            )
         self.storage = storage
         self.connector = connector
 
@@ -225,13 +233,13 @@ class Scheduler:
             if requestedCpuPercent is None or requestedGpuPercent is None:
                 continue
 
+            if self.forecastService is None:
+                return placement
+
             forecast = self.forecastService.buildFeatureForecast(
                 featureName, horizonMinutes
             )
-            if (
-                requestedCpuPercent <= forecast.availableCpuPercent
-                and requestedGpuPercent <= forecast.availableGpuPercent
-            ):
+            if requestedGpuPercent <= forecast.availableGpuPercent:
                 return placement
 
         return None

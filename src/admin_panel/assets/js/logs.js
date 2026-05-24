@@ -80,7 +80,6 @@ function renderJobLogs(payload) {
       <div class="chips" style="margin-bottom: 10px;">
         <span class="chip">${escapeHtml(t('job.launched', { value: entry.launched_at || 'n/a' }))}</span>
       </div>
-      <pre class="log-entry-message">${escapeHtml(entry.reason || '')}</pre>
     `;
     jobLogList.appendChild(item);
   });
