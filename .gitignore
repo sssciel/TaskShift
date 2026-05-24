@@ -35,3 +35,9 @@ configs/slurm.conf
 !.env.example
 !configs/.env.example
 !configs/*.example.yaml
+
+*.png
+
+notebooks/
+
+2027/
