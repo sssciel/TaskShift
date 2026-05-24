@@ -1,6 +1,8 @@
 ## TaskShift
 
-TaskShift is a Python scheduler service for Slurm-based clusters with forecast-aware job launching and cluster configuration snapshots. It also includes a small admin web panel for inspecting the cluster state and editing runtime configuration files.
+TaskShift is a Python scheduler service for Slurm-based clusters with forecast-aware job launching and cluster configuration snapshots. It also includes a small admin web panel for inspecting the cluster state and editing selected runtime configuration files.
+
+Full service documentation is available in [docs/SERVICE.md](/Users/ciel/study/hpc2026/repo/TaskShift/docs/SERVICE.md).
 
 ### Requirements
 
@@ -39,4 +41,4 @@ Run only the web panel:
 
 ### Web Panel Login
 
-Open the address from the startup log, usually [http://127.0.0.1:8000](http://127.0.0.1:8000), and sign in with `ADMIN_PANEL_TOKEN` from [configs/.env](/Users/ciel/study/hpc2026/repo/TaskShift/configs/.env). Use the panel to inspect the cluster, edit configs, and adjust scheduler-related settings.
+Open the address from the startup log, usually [http://127.0.0.1:8000](http://127.0.0.1:8000), and sign in with `ADMIN_PANEL_TOKEN` from [configs/.env](/Users/ciel/study/hpc2026/repo/TaskShift/configs/.env). Use the panel to inspect the cluster, edit `scheduler.yaml`, `server.yaml`, the active cluster config, and adjust scheduler-related settings.
