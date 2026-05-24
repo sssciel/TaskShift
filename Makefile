@@ -8,7 +8,7 @@ help:
 	@echo "  make setup          Setup test environment (create venv, install deps)"
 	@echo "  make test           Run all tests"
 	@echo "  make test-unit      Run unit tests only"
-	@echo "  make test-integration Run integration tests only"
+	@echo "  make test-integration Run dockerized end-to-end integration tests"
 	@echo "  make coverage       Run tests with coverage report"
 	@echo "  make clean          Clean test artifacts"
 	@echo ""
@@ -41,11 +41,8 @@ test-unit:
 # Run integration tests
 test-integration:
 	@echo "=== Running Integration Tests ==="
-	@if [ ! -d ".venv" ]; then \
-		echo "Error: Virtual environment not found. Run 'make setup' first."; \
-		exit 1; \
-	fi
-	@. .venv/bin/activate && pytest tests/integration -v --tb=short --maxfail=5
+	@docker compose -f tests/integration/compose.e2e.yaml up --build --abort-on-container-exit --exit-code-from taskshift-tests
+	@docker compose -f tests/integration/compose.e2e.yaml down -v --remove-orphans
 
 # Run tests with coverage
 coverage:
@@ -69,4 +66,5 @@ clean:
 	@rm -f coverage.xml
 	@rm -f .coverage
 	@find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	@docker compose -f tests/integration/compose.e2e.yaml down -v --remove-orphans 2>/dev/null || true
 	@echo "Clean complete"

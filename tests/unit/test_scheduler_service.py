@@ -32,6 +32,9 @@ def _make_scheduler(
     scheduler_config = MagicMock()
     scheduler_config.timelimit = timelimit
     scheduler_config.max_launched_jobs = max_launched
+    scheduler_config.forecast_enabled = False
+    scheduler_config.forecast_model_dir = None
+    scheduler_config.forecast_skip_startup_training = False
 
     return Scheduler(
         storage=mock_storage,
@@ -514,6 +517,9 @@ class TestFindRunnablePlacement:
         scheduler_config = MagicMock()
         scheduler_config.timelimit = 60
         scheduler_config.max_launched_jobs = None
+        scheduler_config.forecast_enabled = False
+        scheduler_config.forecast_model_dir = None
+        scheduler_config.forecast_skip_startup_training = False
         scheduler = Scheduler(
             storage=mock_storage,
             connector=mock_connector,
@@ -543,6 +549,9 @@ class TestFindRunnablePlacement:
         scheduler_config = MagicMock()
         scheduler_config.timelimit = 60
         scheduler_config.max_launched_jobs = None
+        scheduler_config.forecast_enabled = False
+        scheduler_config.forecast_model_dir = None
+        scheduler_config.forecast_skip_startup_training = False
         scheduler = Scheduler(
             storage=mock_storage,
             connector=mock_connector,
@@ -573,6 +582,9 @@ class TestFindRunnablePlacement:
         scheduler_config = MagicMock()
         scheduler_config.timelimit = 60
         scheduler_config.max_launched_jobs = None
+        scheduler_config.forecast_enabled = False
+        scheduler_config.forecast_model_dir = None
+        scheduler_config.forecast_skip_startup_training = False
         scheduler = Scheduler(
             storage=mock_storage,
             connector=mock_connector,
@@ -588,3 +600,31 @@ class TestFindRunnablePlacement:
         placement = scheduler._findRunnablePlacement(job, tree, TIMESTAMP_NOW)
 
         assert placement is None
+
+    @patch("scheduler.service.ForecastService")
+    def test_forecast_service_not_created_when_forecast_dir_missing(
+        self,
+        mock_forecast_service,
+        mock_get_cluster_config,
+        mock_append_event,
+    ):
+        mock_storage = MagicMock()
+        mock_connector = MagicMock()
+        mock_get_cluster_config.return_value = build_mini_cluster_config()
+
+        scheduler_config = MagicMock()
+        scheduler_config.timelimit = 60
+        scheduler_config.max_launched_jobs = None
+        scheduler_config.forecast_enabled = True
+        scheduler_config.forecast_model_dir = "artifacts/forecast_model"
+        scheduler_config.forecast_skip_startup_training = False
+
+        scheduler = Scheduler(
+            storage=mock_storage,
+            connector=mock_connector,
+            forecastDataDir=None,
+            schedulerConfig=scheduler_config,
+        )
+
+        assert scheduler.forecastService is None
+        mock_forecast_service.assert_not_called()

@@ -1,0 +1,40 @@
+CREATE TABLE IF NOT EXISTS linux_job_table (
+    job_db_inx BIGINT NOT NULL,
+    id_job BIGINT NOT NULL,
+    job_name VARCHAR(255) NOT NULL,
+    timelimit INT NOT NULL DEFAULT 0,
+    state INT NOT NULL DEFAULT 0,
+    priority INT NOT NULL DEFAULT 0,
+    constraints VARCHAR(255) NULL,
+    cpus_req INT NOT NULL DEFAULT 0,
+    nodes_alloc INT NOT NULL DEFAULT 0,
+    time_start BIGINT NOT NULL DEFAULT 0,
+    time_end BIGINT NOT NULL DEFAULT 0,
+    time_submit BIGINT NOT NULL DEFAULT 0,
+    time_eligible BIGINT NOT NULL DEFAULT 0,
+    mod_time BIGINT NOT NULL DEFAULT 0,
+    tres_req TEXT NULL,
+    tres_alloc TEXT NULL,
+    nodelist VARCHAR(255) NULL,
+    `partition` VARCHAR(128) NULL,
+    deleted TINYINT(1) NOT NULL DEFAULT 0,
+    PRIMARY KEY (job_db_inx),
+    KEY idx_state (state),
+    KEY idx_mod_time (mod_time),
+    KEY idx_time_start (time_start),
+    KEY idx_id_job (id_job)
+);
+
+CREATE TABLE IF NOT EXISTS fake_slurm_events (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    event_time BIGINT NOT NULL,
+    command_name VARCHAR(64) NOT NULL,
+    job_id BIGINT NOT NULL,
+    action_name VARCHAR(64) NOT NULL,
+    qos_value VARCHAR(128) NULL,
+    feature_name VARCHAR(128) NULL,
+    node_names TEXT NULL,
+    raw_args JSON NULL,
+    PRIMARY KEY (id),
+    KEY idx_job_id (job_id)
+);

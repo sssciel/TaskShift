@@ -1,11 +1,5 @@
 #!/usr/bin/env sh
-# Fake scontrol command for TaskShift integration tests
-# Logs all invocations for test verification
+set -eu
 
-LOG_FILE="${FAKE_SLURM_CONTROL_LOG:-/tmp/fake_scontrol.log}"
-
-# Append the full command invocation to the log
-echo "scontrol $*" >> "$LOG_FILE"
-
-# Exit success
-exit 0
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+exec python3 "$SCRIPT_DIR/fake_scontrol.py" "$@"

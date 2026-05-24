@@ -9,6 +9,7 @@ from config.models import (
     NodeGroupConfig,
     NodeResources,
     PartitionConfig,
+    SchedulerConfig,
 )
 
 
@@ -211,3 +212,21 @@ class TestPartitionConfig:
         partition = PartitionConfig(name="test", nodes="cn-[001-010]", max_nodes=5)
 
         assert partition.max_nodes == 5
+
+
+class TestSchedulerConfigForecastFields:
+    def test_defaults_include_forecast_model_fields(self):
+        config = SchedulerConfig()
+
+        assert config.forecast_model_dir == "artifacts/forecast_model"
+        assert config.forecast_skip_startup_training is False
+
+    def test_copy_preserves_forecast_model_fields(self):
+        config = SchedulerConfig()
+        config.forecast_model_dir = "artifacts/custom_forecast_model"
+        config.forecast_skip_startup_training = True
+
+        cloned = config.copy()
+
+        assert cloned.forecast_model_dir == "artifacts/custom_forecast_model"
+        assert cloned.forecast_skip_startup_training is True

@@ -90,6 +90,8 @@ class TestExportSeriesBuild:
 
     def test_series_has_correct_time_range(self, tmp_path):
         """Series time range covers all job timestamps."""
+        fmt = "%H:%M:%S %d.%m.%y"
+
         rows = build_standard_test_dataset()
         jobs = [row.toHistoricalJob() for row in rows]
         config = build_mini_cluster_config()
@@ -103,8 +105,8 @@ class TestExportSeriesBuild:
         type_a_series = series["type_a"]
         assert len(type_a_series) >= 2
 
-        first_time = type_a_series[0]["time"]
-        last_time = type_a_series[-1]["time"]
+        first_time = datetime.strptime(type_a_series[0]["time"], fmt)
+        last_time = datetime.strptime(type_a_series[-1]["time"], fmt)
         assert first_time < last_time
 
     def test_15_minute_intervals(self, tmp_path):

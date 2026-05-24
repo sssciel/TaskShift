@@ -2,7 +2,6 @@
 Unit tests for admin_panel.config_store module
 """
 
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -27,9 +26,8 @@ def _patched_config_paths(
     cluster_path="/tmp/cluster.yaml",
     scheduler_path="/tmp/scheduler.yaml",
     server_path="/tmp/server.yaml",
-    env_path="/tmp/.env",
 ):
-    """Return a context manager that patches all four config paths."""
+    """Return a context manager that patches config target paths."""
     from contextlib import ExitStack
 
     class _PatchedPaths:
@@ -50,7 +48,6 @@ def _patched_config_paths(
             s.enter_context(
                 patch("admin_panel.config_store.serverConfigFile", server_path)
             )
-            s.enter_context(patch("admin_panel.config_store.DBConfigFile", env_path))
             return self
 
         def __exit__(self, *args):
@@ -65,16 +62,16 @@ def _patched_config_paths(
 
 
 class TestGetConfigTargets:
-    def test_returns_four_targets(self):
+    def test_returns_three_targets(self):
         with _patched_config_paths():
             targets = get_config_targets()
-        assert len(targets) == 4
+        assert len(targets) == 3
 
     def test_expected_ids(self):
         with _patched_config_paths():
             targets = get_config_targets()
         ids = [t["id"] for t in targets]
-        assert ids == ["cluster_active", "scheduler", "server", "env"]
+        assert ids == ["cluster_active", "scheduler", "server"]
 
     def test_each_target_has_required_keys(self):
         with _patched_config_paths():
@@ -97,13 +94,6 @@ class TestGetConfigTargets:
         cluster = next(t for t in targets if t["id"] == "cluster_active")
         assert "cluster" in cluster["label"].lower()
 
-    def test_env_target_label(self):
-        with _patched_config_paths():
-            targets = get_config_targets()
-        env = next(t for t in targets if t["id"] == "env")
-        assert "Environment" in env["label"]
-
-
 # ════════════════════════════════════════════════════════════════════════════════
 # resolve_config_target
 # ════════════════════════════════════════════════════════════════════════════════
@@ -117,7 +107,7 @@ class TestResolveConfigTarget:
 
     def test_all_ids_resolvable(self):
         with _patched_config_paths():
-            for tid in ["cluster_active", "scheduler", "server", "env"]:
+            for tid in ["cluster_active", "scheduler", "server"]:
                 target = resolve_config_target(tid)
                 assert target["id"] == tid
 
@@ -196,16 +186,6 @@ class TestWriteConfigTarget:
         assert result["content"] == content
         assert scheduler_file.read_text(encoding="utf-8") == content
 
-    def test_writes_env_without_yaml_validation(self, tmp_path):
-        env_file = tmp_path / ".env"
-        content = "DB_HOST=localhost\nDB_USER=admin\nINVALID ][ YAML\n"
-
-        with _patched_config_paths(env_path=str(env_file)):
-            result = write_config_target("env", content)
-
-        assert result["content"] == content
-        assert env_file.read_text(encoding="utf-8") == content
-
     def test_invalid_yaml_raises_for_non_env(self, tmp_path):
         scheduler_file = tmp_path / "scheduler.yaml"
         content = "invalid: ][ yaml"
@@ -264,12 +244,6 @@ class TestValidateConfigContent:
     def test_invalid_yaml_raises(self):
         with pytest.raises(Exception):
             validate_config_content("scheduler", "invalid: ][ yaml")
-
-    def test_env_target_always_passes_with_invalid_yaml(self):
-        validate_config_content("env", "INVALID ][ YAML\nexport FOO=bar\n")
-
-    def test_env_target_passes_with_empty_content(self):
-        validate_config_content("env", "")
 
     def test_cluster_active_validates_yaml(self):
         with pytest.raises(Exception):

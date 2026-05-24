@@ -1,0 +1,17 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /workspace
+
+COPY requirements.txt requirements-test.txt ./
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-test.txt
+
+COPY . .
+
+RUN chmod +x /workspace/taskshift \
+    && chmod +x /workspace/tests/integration/slurm-launch-job.sh \
+    && chmod +x /workspace/tests/integration/fake_scontrol.sh
+
+CMD ["pytest", "tests/integration", "-v", "--tb=short", "--maxfail=5"]

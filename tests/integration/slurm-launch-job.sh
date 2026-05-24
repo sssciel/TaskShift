@@ -19,10 +19,16 @@ if ! [[ "$JOB_ID" =~ ^[0-9]+$ ]]; then
 fi
 
 TARGET_QOS="${TASKSHIFT_QOS:-taskshift}"
+TASKSHIFT_ACTION="${FAKE_SLURM_ACTION:-start}"
+TASKSHIFT_NOW="${TASKSHIFT_TEST_NOW:-}"
 
 echo "taskshift: updating job $JOB_ID → QoS=$TARGET_QOS"
 
-"$FAKE_CONTROL" update JobId="$JOB_ID" QOS="$TARGET_QOS"
+if [ -n "$TASKSHIFT_NOW" ]; then
+    "$FAKE_CONTROL" update JobId="$JOB_ID" QOS="$TARGET_QOS" TaskShiftAction="$TASKSHIFT_ACTION" TaskShiftNow="$TASKSHIFT_NOW"
+else
+    "$FAKE_CONTROL" update JobId="$JOB_ID" QOS="$TARGET_QOS" TaskShiftAction="$TASKSHIFT_ACTION"
+fi
 
 echo "taskshift: job $JOB_ID launched successfully"
 exit 0
