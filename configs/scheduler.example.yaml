@@ -32,14 +32,14 @@ cluster_config_refresh_command:
   - configs/slurm.conf
 
 
-# SLURM connector settings — how the scheduler launches jobs.
+# SLURM connector settings - how the scheduler asks mserver to change job QoS.
 connector:
-  # Path to the shell script that performs the actual QoS change.
-  # Relative paths are resolved from the project root.
-  # An example script is provided as slurm-launch-job.sh.example.
-  launch_script: slurm-launch-job.sh
+  # External mserver endpoint. TaskShift sends POST requests with:
+  # {"jobs": [JOB_ID], "qos": "QOS_NAME"}
+  mserver_url: http://mserver.local:9430/slurm_set_job_qos
 
-  # QoS name passed to the launch script via TASKSHIFT_QOS.
-  # The script should assign this QoS to the job so SLURM picks it up.
-  # Set to null or remove to let the script use its own default.
+  # HTTP request timeout in seconds.
+  timeout_seconds: 30
+
+  # QoS name sent to mserver.
   target_qos: taskshift

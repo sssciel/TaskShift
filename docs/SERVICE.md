@@ -6,7 +6,7 @@ TaskShift is a Python service for Slurm-based clusters. It combines:
 
 - a foreground or background scheduler loop;
 - a resource-aware placement engine for pending jobs;
-- a script-based launch connector for Slurm actions;
+- an mserver-based connector for Slurm QoS changes;
 - a historical utilization export pipeline;
 - an optional forecast subsystem for GPU load prediction;
 - an admin web panel for inspection and controlled runtime operations.
@@ -25,6 +25,7 @@ This document focuses on the actual behavior implemented in the current codebase
 - `src/forecast/`: feature engineering, model training, artifact loading, forecast service.
 - `src/admin_panel/`: built-in admin HTTP server and its JSON endpoints.
 - `src/config/`: YAML and `.env` loading, cluster snapshot refresh, path resolution, logging.
+- `mserver/`: small HTTP service and QoS script used to apply Slurm changes outside TaskShift.
 - `configs/`: runtime config examples and academic calendar data.
 - `tests/unit/`: unit coverage for config, scheduler, resources, connector, admin panel, forecast training.
 - `tests/integration/`: MariaDB-backed end-to-end scenarios with fake Slurm control scripts.
@@ -59,7 +60,7 @@ At runtime the service is assembled from four main layers.
    - enforce scheduler timelimit cap;
    - resolve a runnable placement;
    - reserve the chosen resources in-memory immediately;
-   - invoke the connector launch script;
+   - invoke the connector to request a QoS change through mserver;
    - log the launch attempt.
 
 ### 3.3 Data Layer
@@ -110,7 +111,7 @@ TaskShift expects:
 
 - a reachable MySQL or MariaDB instance with Slurm accounting tables;
 - a valid cluster snapshot source command, usually reading `slurm.conf`;
-- a launcher script that performs the actual Slurm action;
+- a reachable mserver endpoint that performs the actual Slurm action;
 - for integration tests, Docker plus the compose stack in `tests/integration/compose.e2e.yaml`.
 
 ## 5. Setup
@@ -207,8 +208,11 @@ The admin panel bind address can also be overridden without editing YAML:
 - `web_panel_enabled`: auto-start web panel with `schedule`.
 - `hot_reload_enabled`: enables background reloading of safe scheduler fields.
 - `cluster_config_refresh_command`: command that prints current Slurm config to stdout.
-- `connector.launch_script`: script executed when a job is launched.
-- `connector.target_qos`: optional QoS exported to the launch script.
+- `connector.mserver_url`: endpoint that accepts QoS change requests.
+- `connector.timeout_seconds`: HTTP request timeout for mserver calls.
+- `connector.target_qos`: QoS sent to mserver for each selected job.
+The mserver API token is read from `TASKSHIFT_MSERVER_API_TOKEN` in `configs/.env`
+and sent in the `API_TOKEN` header.
 
 ### 6.3 Hot Reload Behavior
 
@@ -609,32 +613,43 @@ Current implementation:
 
 ## 12. Slurm Connector Contract
 
-TaskShift does not execute Slurm commands directly in Python. It delegates launch actions to a shell script.
+TaskShift does not execute Slurm commands directly in Python. It delegates QoS
+changes to mserver with an HTTP POST request.
 
-The connector passes these environment variables:
+The connector sends:
 
-- `TASKSHIFT_JOB_ID`
-- `TASKSHIFT_PARTITION`
-- `TASKSHIFT_FEATURE`
-- `TASKSHIFT_NODES`
-- `TASKSHIFT_CPUS`
-- `TASKSHIFT_GPUS`
-- `TASKSHIFT_TIMELIMIT`
-- `TASKSHIFT_QOS` when configured
-
-The script path is resolved from:
-
-- `connector.launch_script`, or
-- `slurm-launch-job.sh` at project root by default.
+- method: `POST`
+- URL: `connector.mserver_url`
+- headers: `API_TOKEN: <TASKSHIFT_MSERVER_API_TOKEN>` and `Content-Type: application/json`
+- body: `{"jobs": [JOB_ID], "qos": "TARGET_QOS"}`
 
 Connector behavior:
 
-- missing script: warning and no launch;
-- missing placement: warning and no launch;
-- timeout after 30 seconds;
-- non-zero exit code: logged as connector failure.
+- missing `connector.target_qos`: warning and no request;
+- missing API token: error and no request;
+- HTTP/network timeout uses `connector.timeout_seconds`;
+- non-2xx HTTP response: logged as connector failure;
+- 2xx response with `{"success": false}` or `{'success': False}` body: logged as connector failure.
 
 The scheduler still records a launch attempt after calling the connector. It does not currently branch on the boolean result of `executeJob()`.
+
+### 12.1 `mserver/` Directory
+
+The `mserver/` directory contains a minimal standalone HTTP service for the
+cluster-side QoS update path.
+
+- `mserver/server_taskshift.py`: starts a `ThreadingHTTPServer`, checks the
+  `API_TOKEN` request header, accepts `POST /slurm_set_job_qos`, parses the JSON
+  body, and launches `set_job_qos_taskshift.py`.
+- `mserver/set_job_qos_taskshift.py`: validates the incoming `jobs` and `qos`
+  payload, checks that every job is in an allowed partition, and runs
+  `sudo scontrol update job <jobs> qos=<qos>`.
+
+The bundled server default is `0.0.0.0:9426`. Production deployments can run the
+same endpoint elsewhere; TaskShift only needs the final URL in
+`connector.mserver_url`. The TaskShift-side token value comes from
+`TASKSHIFT_MSERVER_API_TOKEN` in `configs/.env` and is sent as the `API_TOKEN`
+header.
 
 ## 13. Cluster Snapshot Refresh
 
@@ -765,7 +780,7 @@ Before running TaskShift in a real environment, verify:
 
 1. DB credentials resolve and the Slurm accounting tables are reachable.
 2. `cluster_config_refresh_command` returns valid Slurm config text.
-3. `connector.launch_script` exists and is executable.
+3. `connector.mserver_url`, `connector.target_qos`, and `TASKSHIFT_MSERVER_API_TOKEN` are configured.
 4. `ADMIN_PANEL_TOKEN` is configured if web UI is enabled.
 5. `forecast_enabled` is set only if export data and optional model dependencies are ready.
 6. The cluster snapshot and partition definitions reflect actual production topology.

@@ -230,3 +230,104 @@ class TestSchedulerConfigForecastFields:
 
         assert cloned.forecast_model_dir == "artifacts/custom_forecast_model"
         assert cloned.forecast_skip_startup_training is True
+
+
+class TestSchedulerConfigConnectorFields:
+    def test_defaults_include_mserver_connector_fields(self):
+        config = SchedulerConfig()
+
+        assert config.connector_mserver_url is None
+        assert config.connector_api_token is None
+        assert config.connector_timeout_seconds == 30
+        assert config.connector_target_qos is None
+
+    def test_loads_mserver_connector_fields(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("TASKSHIFT_DB_CONFIG_FILE", str(tmp_path / "missing.env"))
+        monkeypatch.delenv("TASKSHIFT_MSERVER_API_TOKEN", raising=False)
+        monkeypatch.delenv("TASKSHIFT_MSERVER_TIMEOUT_SECONDS", raising=False)
+        config_path = tmp_path / "scheduler.yaml"
+        config_path.write_text(
+            "\n".join(
+                [
+                    "timelimit: 600",
+                    "connector:",
+                    "  mserver_url: http://mserver.local/slurm_set_job_qos",
+                    "  timeout_seconds: 12",
+                    "  target_qos: normal",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        config = SchedulerConfig().loadConfig(str(config_path))
+
+        assert config.connector_mserver_url == "http://mserver.local/slurm_set_job_qos"
+        assert config.connector_api_token is None
+        assert config.connector_timeout_seconds == 12
+        assert config.connector_target_qos == "normal"
+
+    def test_loads_mserver_token_only_from_taskshift_mserver_api_token(
+        self, tmp_path, monkeypatch
+    ):
+        env_path = tmp_path / ".env"
+        env_path.write_text(
+            'TASKSHIFT_MSERVER_API_TOKEN="env-secret"\n',
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("TASKSHIFT_DB_CONFIG_FILE", str(env_path))
+        monkeypatch.setenv("TASKSHIFT_MSERVER_API_TOKEN", "ignored-process-secret")
+        monkeypatch.delenv("TASKSHIFT_MSERVER_TIMEOUT_SECONDS", raising=False)
+        config_path = tmp_path / "scheduler.yaml"
+        config_path.write_text(
+            "\n".join(
+                [
+                    "timelimit: 600",
+                    "connector:",
+                    "  mserver_url: http://mserver.local/slurm_set_job_qos",
+                    "  target_qos: normal",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        config = SchedulerConfig().loadConfig(str(config_path))
+
+        assert config.connector_api_token == "env-secret"
+        assert "api_token" not in config.to_dict()["connector"]
+
+    def test_ignores_other_mserver_token_names(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("TASKSHIFT_DB_CONFIG_FILE", str(tmp_path / "missing.env"))
+        monkeypatch.delenv("TASKSHIFT_MSERVER_API_TOKEN", raising=False)
+        monkeypatch.setenv("MSERVER_API_TOKEN", "ignored-secret")
+        monkeypatch.setenv("API_TOKEN", "also-ignored")
+        monkeypatch.delenv("TASKSHIFT_MSERVER_TIMEOUT_SECONDS", raising=False)
+        config_path = tmp_path / "scheduler.yaml"
+        config_path.write_text(
+            "\n".join(
+                [
+                    "timelimit: 600",
+                    "connector:",
+                    "  mserver_url: http://mserver.local/slurm_set_job_qos",
+                    "  target_qos: normal",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        config = SchedulerConfig().loadConfig(str(config_path))
+
+        assert config.connector_api_token is None
+
+    def test_copy_preserves_mserver_connector_fields(self):
+        config = SchedulerConfig()
+        config.connector_mserver_url = "http://mserver.local/slurm_set_job_qos"
+        config.connector_api_token = "secret"
+        config.connector_timeout_seconds = 5
+        config.connector_target_qos = "normal"
+
+        cloned = config.copy()
+
+        assert cloned.connector_mserver_url == "http://mserver.local/slurm_set_job_qos"
+        assert cloned.connector_api_token == "secret"
+        assert cloned.connector_timeout_seconds == 5
+        assert cloned.connector_target_qos == "normal"

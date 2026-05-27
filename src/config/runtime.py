@@ -97,6 +97,14 @@ class SchedulerRuntimeConfig:
                 ignoredFields.append("hot_reload_enabled")
             if previousConfig.cluster_config_refresh_command != loadedConfig.cluster_config_refresh_command:
                 ignoredFields.append("cluster_config_refresh_command")
+            if previousConfig.connector_mserver_url != loadedConfig.connector_mserver_url:
+                ignoredFields.append("connector.mserver_url")
+            if previousConfig.connector_api_token != loadedConfig.connector_api_token:
+                ignoredFields.append("TASKSHIFT_MSERVER_API_TOKEN")
+            if previousConfig.connector_timeout_seconds != loadedConfig.connector_timeout_seconds:
+                ignoredFields.append("connector.timeout_seconds")
+            if previousConfig.connector_target_qos != loadedConfig.connector_target_qos:
+                ignoredFields.append("connector.target_qos")
 
             self._config = nextConfig
             self._lastSignature = currentSignature

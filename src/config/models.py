@@ -680,7 +680,9 @@ class SchedulerConfig:
     DEFAULT_WEB_PANEL_ENABLED = True
     DEFAULT_HOT_RELOAD_ENABLED = False
     DEFAULT_CLUSTER_CONFIG_REFRESH_COMMAND = ["cat", "configs/slurm.conf"]
-    DEFAULT_CONNECTOR_LAUNCH_SCRIPT = "slurm-launch-job.sh"
+    DEFAULT_CONNECTOR_MSERVER_URL = None
+    DEFAULT_CONNECTOR_TIMEOUT_SECONDS = 30
+    DEFAULT_CONNECTOR_API_TOKEN = None
     DEFAULT_CONNECTOR_TARGET_QOS = None
 
     def __init__(self):
@@ -700,7 +702,9 @@ class SchedulerConfig:
         self.cluster_config_refresh_command = list(
             self.DEFAULT_CLUSTER_CONFIG_REFRESH_COMMAND
         )
-        self.connector_launch_script = self.DEFAULT_CONNECTOR_LAUNCH_SCRIPT
+        self.connector_mserver_url = self.DEFAULT_CONNECTOR_MSERVER_URL
+        self.connector_api_token = self.DEFAULT_CONNECTOR_API_TOKEN
+        self.connector_timeout_seconds = self.DEFAULT_CONNECTOR_TIMEOUT_SECONDS
         self.connector_target_qos = self.DEFAULT_CONNECTOR_TARGET_QOS
 
     def loadConfig(self, filePath):
@@ -712,6 +716,7 @@ class SchedulerConfig:
         with open(filePath, "r") as file:
             config = get_yaml_module().safe_load(file)
 
+        envConfig = self._loadEnvFile()
         self.timelimit = config["timelimit"]
         self.max_launched_jobs = config.get("max_launched_jobs")
         self.forecast_enabled = config.get(
@@ -744,11 +749,21 @@ class SchedulerConfig:
             )
         )
         connectorConfig = config.get("connector", {})
-        self.connector_launch_script = connectorConfig.get(
-            "launch_script", self.DEFAULT_CONNECTOR_LAUNCH_SCRIPT
+        self.connector_mserver_url = self._normalize_optional_string(
+            connectorConfig.get("mserver_url", self.DEFAULT_CONNECTOR_MSERVER_URL)
         )
-        self.connector_target_qos = connectorConfig.get(
-            "target_qos", self.DEFAULT_CONNECTOR_TARGET_QOS
+        self.connector_api_token = self._normalize_optional_string(
+            envConfig.get("TASKSHIFT_MSERVER_API_TOKEN")
+        )
+        self.connector_timeout_seconds = self._normalize_positive_number(
+            os.getenv("TASKSHIFT_MSERVER_TIMEOUT_SECONDS")
+            or connectorConfig.get(
+                "timeout_seconds", self.DEFAULT_CONNECTOR_TIMEOUT_SECONDS
+            ),
+            "connector.timeout_seconds",
+        )
+        self.connector_target_qos = self._normalize_optional_string(
+            connectorConfig.get("target_qos", self.DEFAULT_CONNECTOR_TARGET_QOS)
         )
         return self
 
@@ -801,9 +816,13 @@ class SchedulerConfig:
                 self.cluster_config_refresh_command
             )
 
-        if self.connector_launch_script:
+        if self.connector_mserver_url:
             result["connector"] = result.get("connector", {})
-            result["connector"]["launch_script"] = self.connector_launch_script
+            result["connector"]["mserver_url"] = self.connector_mserver_url
+
+        if self.connector_timeout_seconds is not None:
+            result["connector"] = result.get("connector", {})
+            result["connector"]["timeout_seconds"] = self.connector_timeout_seconds
 
         if self.connector_target_qos is not None:
             result["connector"] = result.get("connector", {})
@@ -827,9 +846,40 @@ class SchedulerConfig:
         clone.web_panel_enabled = self.web_panel_enabled
         clone.hot_reload_enabled = self.hot_reload_enabled
         clone.cluster_config_refresh_command = list(self.cluster_config_refresh_command)
-        clone.connector_launch_script = self.connector_launch_script
+        clone.connector_mserver_url = self.connector_mserver_url
+        clone.connector_api_token = self.connector_api_token
+        clone.connector_timeout_seconds = self.connector_timeout_seconds
         clone.connector_target_qos = self.connector_target_qos
         return clone
+
+    def _loadEnvFile(self):
+        try:
+            from dotenv import dotenv_values
+        except ModuleNotFoundError:
+            return {}
+
+        filePath = os.getenv("TASKSHIFT_DB_CONFIG_FILE", "configs/.env")
+        if not os.path.exists(filePath):
+            return {}
+
+        return dotenv_values(filePath)
+
+    def _normalize_optional_string(self, value):
+        if value is None:
+            return None
+
+        normalized = str(value).strip()
+        return normalized or None
+
+    def _normalize_positive_number(self, value, fieldName: str):
+        normalized = float(value)
+        if normalized <= 0:
+            raise ValueError(f"{fieldName} must be greater than zero")
+
+        if normalized.is_integer():
+            return int(normalized)
+
+        return normalized
 
     def _normalize_command(self, commandValue):
         if commandValue is None:

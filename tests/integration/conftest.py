@@ -6,9 +6,13 @@ TaskShift against a real MariaDB instance provided by docker-compose.
 
 from __future__ import annotations
 
+import json
 import os
 import stat
 import subprocess
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import mysql.connector
@@ -23,6 +27,7 @@ TEST_DB_USER = os.getenv("DB_USER", "taskshift")
 TEST_DB_PASSWORD = os.getenv("DB_PASSWD", "taskshift")
 TEST_DB_NAME = os.getenv("DB_DATABASE", "slurm_acct_db")
 TEST_NOW = 1_700_000_000
+TEST_MSERVER_TOKEN = "integration-token"
 
 
 def _make_executable(path: Path):
@@ -36,7 +41,102 @@ def repo_root() -> Path:
 
 
 @pytest.fixture(scope="session")
-def integration_runtime_dir(tmp_path_factory: pytest.TempPathFactory, repo_root: Path) -> Path:
+def fake_mserver_endpoint():
+    class FakeMserverHandler(BaseHTTPRequestHandler):
+        def log_message(self, format, *args):
+            return
+
+        def do_POST(self):
+            if self.path != "/slurm_set_job_qos":
+                self._send_json(404, {"success": False, "error": "not found"})
+                return
+
+            if self.headers.get("API_TOKEN") != TEST_MSERVER_TOKEN:
+                self._send_json(403, {"success": False, "error": "invalid token"})
+                return
+
+            try:
+                content_length = int(self.headers.get("Content-Length", "0") or "0")
+                request_body = self.rfile.read(content_length).decode("utf-8")
+                payload = json.loads(request_body)
+                jobs = payload["jobs"]
+                qos = str(payload["qos"])
+                if not isinstance(jobs, list) or not qos:
+                    raise ValueError("invalid payload")
+            except Exception as error:
+                self._send_json(400, {"success": False, "error": str(error)})
+                return
+
+            connection = mysql.connector.connect(
+                host=TEST_DB_HOST,
+                port=TEST_DB_PORT,
+                user=TEST_DB_USER,
+                password=TEST_DB_PASSWORD,
+                database=TEST_DB_NAME,
+                charset=os.getenv("DB_CHARSET", "utf8mb4"),
+                collation=os.getenv("DB_COLLATION", "utf8mb4_general_ci"),
+            )
+            try:
+                cursor = connection.cursor()
+                for job_id in jobs:
+                    cursor.execute(
+                        """
+                        INSERT INTO fake_slurm_events (
+                            event_time, command_name, job_id, action_name, qos_value,
+                            feature_name, node_names, raw_args
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            int(time.time()),
+                            "mserver",
+                            int(job_id),
+                            "set_qos",
+                            qos,
+                            None,
+                            None,
+                            json.dumps(payload, ensure_ascii=False),
+                        ),
+                    )
+                connection.commit()
+                cursor.close()
+            finally:
+                connection.close()
+
+            self._send_json(200, {"success": True})
+
+        def _send_json(self, status_code: int, payload: dict):
+            response_body = json.dumps(payload).encode("utf-8")
+            self.send_response(status_code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(response_body)))
+            self.end_headers()
+            self.wfile.write(response_body)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), FakeMserverHandler)
+    thread = threading.Thread(
+        target=server.serve_forever,
+        daemon=True,
+        name="taskshift-fake-mserver",
+    )
+    thread.start()
+
+    try:
+        yield {
+            "url": f"http://127.0.0.1:{server.server_port}/slurm_set_job_qos",
+            "token": TEST_MSERVER_TOKEN,
+        }
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2.0)
+
+
+@pytest.fixture(scope="session")
+def integration_runtime_dir(
+    tmp_path_factory: pytest.TempPathFactory,
+    repo_root: Path,
+    fake_mserver_endpoint: dict[str, str],
+) -> Path:
     runtime_dir = tmp_path_factory.mktemp("taskshift-e2e-runtime")
     configs_dir = runtime_dir / "configs"
     configs_dir.mkdir(parents=True, exist_ok=True)
@@ -46,8 +146,13 @@ def integration_runtime_dir(tmp_path_factory: pytest.TempPathFactory, repo_root:
 
     cluster_config_path = configs_dir / "cluster.yaml"
     scheduler_config_path = configs_dir / "scheduler.yaml"
+    env_config_path = configs_dir / ".env"
 
     build_mini_cluster_config().saveConfig(cluster_config_path)
+    env_config_path.write_text(
+        f'TASKSHIFT_MSERVER_API_TOKEN="{fake_mserver_endpoint["token"]}"\n',
+        encoding="utf-8",
+    )
     scheduler_config_path.write_text(
         "\n".join(
             [
@@ -64,7 +169,8 @@ def integration_runtime_dir(tmp_path_factory: pytest.TempPathFactory, repo_root:
                 f"  - cat",
                 f"  - {cluster_config_path}",
                 "connector:",
-                f"  launch_script: {repo_root / 'tests' / 'integration' / 'slurm-launch-job.sh'}",
+                f"  mserver_url: {fake_mserver_endpoint['url']}",
+                "  timeout_seconds: 5",
                 "  target_qos: taskshift",
             ]
         )
@@ -73,7 +179,6 @@ def integration_runtime_dir(tmp_path_factory: pytest.TempPathFactory, repo_root:
     )
 
     _make_executable(repo_root / "taskshift")
-    _make_executable(repo_root / "tests" / "integration" / "slurm-launch-job.sh")
     _make_executable(repo_root / "tests" / "integration" / "fake_scontrol.sh")
 
     return runtime_dir
@@ -93,6 +198,7 @@ def taskshift_test_env(repo_root: Path, integration_runtime_dir: Path) -> dict[s
             "DB_COLLATION": "utf8mb4_general_ci",
             "TASKSHIFT_CLUSTER_CONFIG_FILE": str(integration_runtime_dir / "configs" / "cluster.yaml"),
             "TASKSHIFT_SCHEDULER_CONFIG_FILE": str(integration_runtime_dir / "configs" / "scheduler.yaml"),
+            "TASKSHIFT_DB_CONFIG_FILE": str(integration_runtime_dir / "configs" / ".env"),
             "TASKSHIFT_CLUSTER_CONFIG_BACKUP_ROOT": str(integration_runtime_dir / "cluster_backups"),
             "TASKSHIFT_ACADEMIC_CALENDAR_ROOT": str(repo_root / "configs" / "calendar"),
             "FAKE_SLURM_CONTROL_BIN": str(repo_root / "tests" / "integration" / "fake_scontrol.sh"),

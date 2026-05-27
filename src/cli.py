@@ -258,8 +258,10 @@ def run_scheduler_once(
     try:
         logger.info("Get pending jobs")
         connector = SlurmConnector(
-            launchScript=effectiveSchedulerConfig.connector_launch_script,
+            mserverUrl=effectiveSchedulerConfig.connector_mserver_url,
+            apiToken=effectiveSchedulerConfig.connector_api_token,
             targetQos=effectiveSchedulerConfig.connector_target_qos,
+            timeoutSeconds=effectiveSchedulerConfig.connector_timeout_seconds,
         )
         return Scheduler(
             storage,

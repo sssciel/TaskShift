@@ -12,12 +12,10 @@ from tests.integration.synthetic_data import SyntheticJobFactory
 
 
 class TestSchedulerEndToEnd:
-    def test_scheduler_launches_pending_gpu_job_and_moves_it_to_running(
+    def test_scheduler_requests_mserver_qos_for_pending_gpu_job(
         self,
         db_connection,
         taskshift_runner,
-        taskshift_test_env,
-        repo_root,
     ):
         factory = SyntheticJobFactory(base_time=TEST_NOW - 600)
         pending_job = factory.pending_job(
@@ -34,20 +32,16 @@ class TestSchedulerEndToEnd:
 
         updated_row = fetch_job_row(db_connection, pending_job.id_job)
         assert updated_row is not None
-        assert updated_row["state"] == 1
-        assert updated_row["time_start"] == TEST_NOW
+        assert updated_row["state"] == 0
+        assert updated_row["time_start"] == 0
         assert updated_row["time_end"] == 0
-        assert updated_row["nodes_alloc"] == 1
-        assert updated_row["nodelist"] == "cn-001"
-        assert updated_row["tres_alloc"] == "1=4,4=1,5=4,1001=1"
 
         events = fetch_fake_slurm_events(db_connection)
         assert len(events) == 1
-        assert events[0]["command_name"] == "update"
-        assert events[0]["action_name"] == "start"
+        assert events[0]["command_name"] == "mserver"
+        assert events[0]["action_name"] == "set_qos"
         assert events[0]["job_id"] == pending_job.id_job
-        assert events[0]["feature_name"] == "type_a"
-        assert events[0]["node_names"] == "cn-001"
+        assert events[0]["qos_value"] == "taskshift"
 
         storage = slurmStorage().create()
         try:
@@ -56,8 +50,8 @@ class TestSchedulerEndToEnd:
         finally:
             storage.close()
 
-        assert pending_job.id_job not in pending_ids
-        assert pending_job.id_job in active_ids
+        assert pending_job.id_job in pending_ids
+        assert pending_job.id_job not in active_ids
 
     def test_scheduler_respects_gpu_capacity_and_leaves_oversized_job_pending(
         self,
@@ -104,15 +98,15 @@ class TestSchedulerEndToEnd:
         small_row = fetch_job_row(db_connection, small_job.id_job)
         large_row = fetch_job_row(db_connection, large_job.id_job)
 
-        assert small_row is not None and small_row["state"] == 1
-        assert small_row["nodelist"] == "cn-004"
+        assert small_row is not None and small_row["state"] == 0
         assert large_row is not None and large_row["state"] == 0
         assert large_row["time_start"] == 0
 
         events = fetch_fake_slurm_events(db_connection)
         assert [event["job_id"] for event in events] == [small_job.id_job]
+        assert [event["action_name"] for event in events] == ["set_qos"]
 
-    def test_fake_slurm_can_complete_a_launched_job_and_remove_it_from_active_queue(
+    def test_fake_slurm_can_start_and_complete_a_qos_marked_job(
         self,
         db_connection,
         taskshift_runner,
@@ -130,6 +124,27 @@ class TestSchedulerEndToEnd:
 
         launch_result = taskshift_runner("run-scheduler-once")
         assert launch_result.returncode == 0, launch_result.stderr or launch_result.stdout
+
+        start_env = dict(taskshift_test_env)
+        start_env.update(
+            {
+                "TASKSHIFT_JOB_ID": str(pending_job.id_job),
+                "TASKSHIFT_CPUS": "4",
+                "TASKSHIFT_GPUS": "1",
+                "TASKSHIFT_FEATURE": "type_a",
+                "TASKSHIFT_NODES": "cn-001",
+            }
+        )
+        start_result = run_fake_scontrol(
+            repo_root,
+            start_env,
+            "update",
+            f"JobId={pending_job.id_job}",
+            "QOS=taskshift",
+            "TaskShiftAction=start",
+            f"TaskShiftNow={TEST_NOW}",
+        )
+        assert start_result.returncode == 0, start_result.stderr or start_result.stdout
 
         completion_env = dict(taskshift_test_env)
         completion_env.update(
@@ -166,7 +181,11 @@ class TestSchedulerEndToEnd:
         assert pending_job.id_job not in active_ids
 
         events = fetch_fake_slurm_events(db_connection)
-        assert [event["action_name"] for event in events] == ["start", "complete"]
+        assert [event["action_name"] for event in events] == [
+            "set_qos",
+            "start",
+            "complete",
+        ]
 
     def test_scheduler_skips_jobs_above_timelimit_without_touching_queue(
         self,
