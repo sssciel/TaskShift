@@ -46,8 +46,8 @@ async function loadConfigFile(targetId) {
 
 async function saveConfigFile() {
   if (!selectedConfigId) {
-    setStatus("No config file selected.", true);
-    showToast("No config file selected.", "error");
+    setStatus("No configuration file selected.", true);
+    showToast("No configuration file selected.", "error");
     return;
   }
 
@@ -72,10 +72,6 @@ async function saveConfigFile() {
     throw error;
   }
 
-  if (selectedConfigId === "cluster_active") {
-    await loadClusterSources();
-    await loadClusterTree();
-  }
   if (selectedConfigId === "server") {
     await loadConfigTargets();
   }

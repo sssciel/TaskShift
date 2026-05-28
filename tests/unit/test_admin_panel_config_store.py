@@ -17,13 +17,12 @@ from admin_panel.config_store import (
 # ════════════════════════════════════════════════════════════════════════════════
 # Helpers
 #
-# getLatestClusterConfigFile is a function, while DBConfigFile/schedulerConfigFile/
-# serverConfigFile are plain string module-level variables. Patch accordingly.
+# schedulerConfigFile/serverConfigFile are plain string module-level variables.
+# Patch them so tests do not touch repository config files.
 # ════════════════════════════════════════════════════════════════════════════════
 
 
 def _patched_config_paths(
-    cluster_path="/tmp/cluster.yaml",
     scheduler_path="/tmp/scheduler.yaml",
     server_path="/tmp/server.yaml",
 ):
@@ -36,12 +35,6 @@ def _patched_config_paths(
 
         def __enter__(self):
             s = self._stack
-            s.enter_context(
-                patch(
-                    "admin_panel.config_store.getLatestClusterConfigFile",
-                    return_value=cluster_path,
-                )
-            )
             s.enter_context(
                 patch("admin_panel.config_store.schedulerConfigFile", scheduler_path)
             )
@@ -62,16 +55,16 @@ def _patched_config_paths(
 
 
 class TestGetConfigTargets:
-    def test_returns_three_targets(self):
+    def test_returns_two_targets(self):
         with _patched_config_paths():
             targets = get_config_targets()
-        assert len(targets) == 3
+        assert len(targets) == 2
 
     def test_expected_ids(self):
         with _patched_config_paths():
             targets = get_config_targets()
         ids = [t["id"] for t in targets]
-        assert ids == ["cluster_active", "scheduler", "server"]
+        assert ids == ["scheduler", "server"]
 
     def test_each_target_has_required_keys(self):
         with _patched_config_paths():
@@ -88,12 +81,6 @@ class TestGetConfigTargets:
         for target in targets:
             assert isinstance(target["path"], str)
 
-    def test_cluster_active_label(self):
-        with _patched_config_paths():
-            targets = get_config_targets()
-        cluster = next(t for t in targets if t["id"] == "cluster_active")
-        assert "cluster" in cluster["label"].lower()
-
 # ════════════════════════════════════════════════════════════════════════════════
 # resolve_config_target
 # ════════════════════════════════════════════════════════════════════════════════
@@ -107,7 +94,7 @@ class TestResolveConfigTarget:
 
     def test_all_ids_resolvable(self):
         with _patched_config_paths():
-            for tid in ["cluster_active", "scheduler", "server"]:
+            for tid in ["scheduler", "server"]:
                 target = resolve_config_target(tid)
                 assert target["id"] == tid
 
@@ -129,14 +116,14 @@ class TestResolveConfigTarget:
 
 class TestReadConfigTarget:
     def test_reads_existing_file(self, tmp_path):
-        cluster_file = tmp_path / "cluster.yaml"
-        cluster_file.write_text("node_groups: []\n", encoding="utf-8")
+        scheduler_file = tmp_path / "scheduler.yaml"
+        scheduler_file.write_text("timelimit: 60\n", encoding="utf-8")
 
-        with _patched_config_paths(cluster_path=str(cluster_file)):
-            result = read_config_target("cluster_active")
+        with _patched_config_paths(scheduler_path=str(scheduler_file)):
+            result = read_config_target("scheduler")
 
-        assert result["content"] == "node_groups: []\n"
-        assert result["id"] == "cluster_active"
+        assert result["content"] == "timelimit: 60\n"
+        assert result["id"] == "scheduler"
 
     def test_nonexistent_server_returns_default_content(self, tmp_path):
         server_file = tmp_path / "nonexistent_server.yaml"
@@ -160,14 +147,14 @@ class TestReadConfigTarget:
                 read_config_target("does_not_exist")
 
     def test_result_includes_path(self, tmp_path):
-        cluster_file = tmp_path / "cluster.yaml"
-        cluster_file.write_text("node_groups: []\n", encoding="utf-8")
+        scheduler_file = tmp_path / "scheduler.yaml"
+        scheduler_file.write_text("timelimit: 60\n", encoding="utf-8")
 
-        with _patched_config_paths(cluster_path=str(cluster_file)):
-            result = read_config_target("cluster_active")
+        with _patched_config_paths(scheduler_path=str(scheduler_file)):
+            result = read_config_target("scheduler")
 
         assert "path" in result
-        assert cluster_file.name in result["path"]
+        assert scheduler_file.name in result["path"]
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -244,10 +231,6 @@ class TestValidateConfigContent:
     def test_invalid_yaml_raises(self):
         with pytest.raises(Exception):
             validate_config_content("scheduler", "invalid: ][ yaml")
-
-    def test_cluster_active_validates_yaml(self):
-        with pytest.raises(Exception):
-            validate_config_content("cluster_active", "bad: ][ yaml")
 
     def test_server_validates_yaml(self):
         with pytest.raises(Exception):

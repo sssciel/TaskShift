@@ -130,6 +130,28 @@ class TestExportSeriesBuild:
                 diff = (times[i] - times[i - 1]).total_seconds()
                 assert diff == 900, f"Interval {i}: {diff}s != 900s"
 
+    def test_running_job_does_not_append_trailing_zero_bucket(self, tmp_path):
+        """Running jobs should end on the latest observed bucket, not a synthetic zero tail."""
+        fmt = "%H:%M:%S %d.%m.%y"
+
+        factory = SyntheticJobFactory()
+        rows = [factory.running_gpu_job(feature="type_a", node="cn-001", gpus=2)]
+        jobs = [row.toHistoricalJob() for row in rows]
+        config = build_mini_cluster_config()
+        now_timestamp = factory.base_time + (2 * INTERVAL_15M) + 300
+
+        series = build_historical_utilization_series(
+            jobs=jobs,
+            clusterConfig=config,
+            intervalMinutes=15,
+            nowTimestamp=now_timestamp,
+        )
+
+        overall_series = series["overall"]
+        assert overall_series
+        assert overall_series[-1]["gpu"] > 0.0
+        assert datetime.strptime(overall_series[-1]["time"], fmt) < datetime.fromtimestamp(now_timestamp)
+
 
 # ─── File-export tests ──────────────────────────────────────────────────────────
 

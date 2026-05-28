@@ -24,8 +24,40 @@ function buildSystemMetrics(payload) {
       count: (lastRun.attempted_job_ids || []).length,
     }),
     t("metric.runningJobs", { count: lastRun.running_job_count || 0 }),
+    t("metric.skippedForecast", { count: lastRun.skipped_by_forecast || 0 }),
     t("metric.failedPool", { count: lastRun.failed_job_pool_size || 0 }),
+    t("metric.failedPoolCleanup", {
+      value: getFailedPoolCleanupMetricValue(controls),
+    }),
   ];
+}
+
+function getFailedPoolCleanupMetricValue(controls) {
+  const intervalText = formatCountdown(
+    controls.failed_job_pool_cleanup_interval_seconds,
+  );
+  if (controls.failed_job_pool_next_cleanup_at) {
+    return t("system.failedPoolCleanupValueWithNext", {
+      interval: intervalText,
+      next: formatDate(controls.failed_job_pool_next_cleanup_at),
+    });
+  }
+
+  return t("system.failedPoolCleanupValue", { interval: intervalText });
+}
+
+function getFailedPoolCleanupNote(controls) {
+  const intervalText = formatCountdown(
+    controls.failed_job_pool_cleanup_interval_seconds,
+  );
+  if (controls.failed_job_pool_next_cleanup_at) {
+    return t("system.failedPoolCleanupNoteWithNext", {
+      interval: intervalText,
+      next: formatDate(controls.failed_job_pool_next_cleanup_at),
+    });
+  }
+
+  return t("system.failedPoolCleanupNote", { interval: intervalText });
 }
 
 function refreshSystemCountdownView() {
@@ -105,6 +137,7 @@ function renderSystemStatus(payload) {
     attempted: (lastRun.attempted_job_ids || []).length,
     running: lastRun.running_job_count || 0,
   });
+  failedPoolCleanupText.textContent = getFailedPoolCleanupNote(controls);
 
   renderMetrics(systemStatusMetrics, buildSystemMetrics(payload));
 
@@ -116,6 +149,13 @@ function renderSystemStatus(payload) {
   runSchedulerNowButton.title = controls.can_run_now
     ? ""
     : t("system.manualRunUnavailable");
+  resetFailedJobsCacheButton.disabled =
+    !controls.can_reset_failed_job_pool || service.status === "running";
+  resetFailedJobsCacheButton.title = controls.can_reset_failed_job_pool
+    ? service.status === "running"
+      ? t("system.failedPoolResetBusy")
+      : ""
+    : t("system.failedPoolResetUnavailable");
 
   const attemptedEntries = (lastRun.pending_jobs || []).filter(
     (entry) => entry.was_attempted,
@@ -201,6 +241,21 @@ async function runSchedulerNow() {
     window.setTimeout(() => {
       loadSystemStatus({ silent: true }).catch(() => {});
     }, 300);
+  } catch (error) {
+    showToast(error.message, "error");
+    throw error;
+  }
+}
+
+async function resetFailedJobsCache() {
+  setStatus(t("status.resettingFailedPoolCache"));
+  try {
+    await fetchJson("/api/system-status/reset-failed-job-cache", {
+      method: "POST",
+    });
+    setStatus(t("status.failedPoolCacheReset"));
+    showToast(t("status.failedPoolCacheReset"), "success");
+    await loadSystemStatus({ silent: true });
   } catch (error) {
     showToast(error.message, "error");
     throw error;

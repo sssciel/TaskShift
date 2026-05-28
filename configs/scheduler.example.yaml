@@ -8,15 +8,24 @@ timelimit: 600
 max_launched_jobs: 10
 
 # Enables forecast-aware scheduling without extra CLI flags.
-# Keep this `false` until the export pipeline and `forecast_data_dir` are configured.
 forecast_enabled: false
 
-# Directory with exported historical utilization data used by the forecast service.
-forecast_data_dir: exports/historical_utilization/current
+# Where trained forecast artifacts are stored.
+forecast_model_dir: artifacts/forecast_model
 
-# Minimal age of the latest cluster snapshot before a new live refresh is attempted.
-# The refresh runs only when more than this many hours elapsed since the previous backup.
-cluster_config_snapshot_interval_hours: 24
+# Maximum age of the forecast artifact before TaskShift retrains it automatically.
+# Default 84h means roughly twice a week.
+forecast_model_update_interval_hours: 84
+
+# Future forecast horizon stored with each trained model artifact.
+# Each point predicts mean GPU load for the next 6 hours.
+forecast_prediction_horizon_hours: 72
+
+# IANA timezone used for scheduler timers and wall-clock scheduling.
+timezone: Europe/Moscow
+
+# Fixed daily time for live cluster config refresh.
+cluster_config_refresh_time: "00:30"
 
 # Starts the admin web panel together with `taskshift schedule`.
 web_panel_enabled: true
@@ -36,7 +45,7 @@ cluster_config_refresh_command:
 connector:
   # External mserver endpoint. TaskShift sends POST requests with:
   # {"jobs": [JOB_ID], "qos": "QOS_NAME"}
-  mserver_url: http://mserver.local:9430/slurm_set_job_qos
+  mserver_url: http://mserver.local:930/slurm_set_job_qos
 
   # HTTP request timeout in seconds.
   timeout_seconds: 30

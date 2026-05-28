@@ -3,8 +3,12 @@ import logging
 import threading
 import time
 import traceback
-from datetime import datetime, timedelta
+from datetime import datetime
+from datetime import timedelta
 from pathlib import Path
+
+from scheduler.attempt_cache import reset_failed_job_pool
+from config.timezone import now_in_timezone
 
 try:
     from loguru import logger
@@ -43,9 +47,10 @@ def classify_scheduler_error(error: Exception) -> str:
 
 
 class SchedulerRuntimeStateStore:
-    def __init__(self, projectRoot: str | Path, intervalMinutes: int):
+    def __init__(self, projectRoot: str | Path, intervalMinutes: int, timezoneName: str = "Europe/Moscow"):
         self.projectRoot = Path(projectRoot).resolve()
         self.intervalMinutes = int(intervalMinutes)
+        self.timezoneName = timezoneName
         self.filePath = self.projectRoot / "logs" / SCHEDULER_RUNTIME_STATE_FILE_NAME
         self.filePath.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
@@ -54,13 +59,14 @@ class SchedulerRuntimeStateStore:
 
     def _build_default_state(self) -> dict:
         return {
-            "updated_at": _isoformat(datetime.now()),
+            "updated_at": _isoformat(now_in_timezone(self.timezoneName)),
             "service": {
                 "running": False,
                 "pid": None,
                 "interval_minutes": self.intervalMinutes,
                 "next_run_at": None,
                 "manual_run_available": False,
+                "timezone": self.timezoneName,
             },
             "last_run": {
                 "status": "idle",
@@ -78,6 +84,7 @@ class SchedulerRuntimeStateStore:
                 "launched_count": 0,
                 "skipped_by_timelimit": 0,
                 "skipped_by_resources": 0,
+                "skipped_by_forecast": 0,
                 "skipped_by_failed_attempt_pool": 0,
                 "failed_job_pool_size": 0,
                 "attempted_job_ids": [],
@@ -105,7 +112,9 @@ class SchedulerRuntimeStateStore:
         payload["service"].setdefault("pid", None)
         payload["service"].setdefault("next_run_at", None)
         payload["service"].setdefault("manual_run_available", False)
+        payload["service"].setdefault("timezone", self.timezoneName)
         payload["last_run"].setdefault("status", "idle")
+        payload["last_run"].setdefault("skipped_by_forecast", 0)
         payload["last_run"].setdefault("attempted_job_ids", [])
         payload["last_run"].setdefault("pending_jobs", [])
         if shouldRewrite:
@@ -114,7 +123,7 @@ class SchedulerRuntimeStateStore:
 
     def write(self, payload: dict):
         normalizedPayload = dict(payload)
-        normalizedPayload["updated_at"] = _isoformat(datetime.now())
+        normalizedPayload["updated_at"] = _isoformat(now_in_timezone(self.timezoneName))
         with self._lock:
             self.filePath.write_text(
                 json.dumps(normalizedPayload, ensure_ascii=False, indent=2),
@@ -129,10 +138,11 @@ class SchedulerRuntimeStateStore:
 
 
 class SchedulerControlPlane:
-    def __init__(self, projectRoot: str | Path, intervalMinutes: int):
+    def __init__(self, projectRoot: str | Path, intervalMinutes: int, timezoneName: str = "Europe/Moscow"):
         self.projectRoot = Path(projectRoot).resolve()
         self.intervalMinutes = int(intervalMinutes)
-        self.stateStore = SchedulerRuntimeStateStore(self.projectRoot, self.intervalMinutes)
+        self.timezoneName = timezoneName
+        self.stateStore = SchedulerRuntimeStateStore(self.projectRoot, self.intervalMinutes, timezoneName=timezoneName)
         self._scheduler = None
         self._schedulerJobId = None
         self._jobRunner = None
@@ -155,6 +165,7 @@ class SchedulerControlPlane:
                     "interval_minutes": self.intervalMinutes,
                     "next_run_at": _isoformat(nextRunAt),
                     "manual_run_available": True,
+                    "timezone": self.timezoneName,
                 }
             )
         )
@@ -199,6 +210,23 @@ class SchedulerControlPlane:
         worker.start()
         return self.get_state()
 
+    def reset_failed_job_cache(self):
+        if not self._runLock.acquire(blocking=False):
+            raise RuntimeError("Failed-job cache cannot be reset while a scheduler run is already in progress.")
+
+        try:
+            reset_failed_job_pool()
+            self.stateStore.mutate(
+                lambda payload: payload["last_run"].update(
+                    {
+                        "failed_job_pool_size": 0,
+                    }
+                )
+            )
+            return self.get_state()
+        finally:
+            self._runLock.release()
+
     def _run_manual_tick(self, maxLaunchedJobs: int | None):
         try:
             self._execute(
@@ -216,7 +244,7 @@ class SchedulerControlPlane:
                 raise RuntimeError("Scheduler run is already in progress.")
             return None
 
-        startedAt = datetime.now()
+        startedAt = now_in_timezone(self.timezoneName)
         startedMonotonic = time.monotonic()
         self.stateStore.mutate(
             lambda payload: payload["last_run"].update(
@@ -237,7 +265,7 @@ class SchedulerControlPlane:
         try:
             summary = self._jobRunner(maxLaunchedJobs=maxLaunchedJobs, trigger=trigger) or {}
         except Exception as error:
-            finishedAt = datetime.now()
+            finishedAt = now_in_timezone(self.timezoneName)
             self.stateStore.mutate(
                 lambda payload: payload["last_run"].update(
                     {
@@ -254,6 +282,7 @@ class SchedulerControlPlane:
                         "launched_count": 0,
                         "skipped_by_timelimit": 0,
                         "skipped_by_resources": 0,
+                        "skipped_by_forecast": 0,
                         "skipped_by_failed_attempt_pool": 0,
                         "failed_job_pool_size": 0,
                         "attempted_job_ids": [],
@@ -264,7 +293,7 @@ class SchedulerControlPlane:
             logger.exception(f"Scheduler pass failed | trigger={trigger}: {error}")
             return None
         else:
-            finishedAt = datetime.now()
+            finishedAt = now_in_timezone(self.timezoneName)
             self.stateStore.mutate(
                 lambda payload: payload["last_run"].update(
                     {
@@ -278,6 +307,7 @@ class SchedulerControlPlane:
                         "launched_count": summary.get("launched_count", 0),
                         "skipped_by_timelimit": summary.get("skipped_by_timelimit", 0),
                         "skipped_by_resources": summary.get("skipped_by_resources", 0),
+                        "skipped_by_forecast": summary.get("skipped_by_forecast", 0),
                         "skipped_by_failed_attempt_pool": summary.get("skipped_by_failed_attempt_pool", 0),
                         "failed_job_pool_size": summary.get("failed_job_pool_size", 0),
                         "attempted_job_ids": summary.get("attempted_job_ids", []),
@@ -294,7 +324,7 @@ class SchedulerControlPlane:
             self._runLock.release()
 
     def _reschedule_next_run(self):
-        nextRunAt = datetime.now() + timedelta(minutes=self.intervalMinutes)
+        nextRunAt = now_in_timezone(self.timezoneName) + timedelta(minutes=self.intervalMinutes)
         if self._scheduler is not None and self._schedulerJobId is not None:
             try:
                 self._scheduler.modify_job(self._schedulerJobId, next_run_time=nextRunAt)

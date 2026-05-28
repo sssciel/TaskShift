@@ -13,10 +13,10 @@
             <aside class="sidebar">
                 <div class="brand">
                     <div class="brand-badge">TaskShift Admin</div>
-                    <h1>Cluster panel</h1>
+                    <h1>TaskShift panel</h1>
                     <p>
-                        Inspect the active cluster snapshot, edit live config
-                        files, and keep room for future tabs without changing
+                        Inspect the active cluster snapshot, edit live
+                        configuration files, and keep room for future tabs without changing
                         the operating model.
                     </p>
                 </div>
@@ -43,11 +43,17 @@
                             snapshot source.</span
                         >
                     </button>
-                    <button class="tab-button" data-tab="configs">
-                        <span class="tab-label">Configs</span>
+                    <button class="tab-button" data-tab="resources">
+                        <span class="tab-label">Free resources</span>
                         <span class="tab-caption"
-                            >Edit `scheduler.yaml`, `server.yaml`, and the
-                            active cluster config.</span
+                            >Per-node scheduler resource tree with used and
+                            free CPU/GPU.</span
+                        >
+                    </button>
+                    <button class="tab-button" data-tab="configs">
+                        <span class="tab-label">Configurations</span>
+                        <span class="tab-caption"
+                            >Edit `scheduler.yaml` and `server.yaml`.</span
                         >
                     </button>
                     <button class="tab-button" data-tab="calendars">
@@ -57,17 +63,38 @@
                             discover new calendar files.</span
                         >
                     </button>
-                    <button class="tab-button" data-tab="logs">
-                        <span class="tab-label">Logs</span>
+                    <button class="tab-button" data-tab="service_logs">
+                        <span class="tab-label">System log</span>
                         <span class="tab-caption"
-                            >Structured view for `taskshift.log` with search and
-                            level filters.</span
+                            >Full raw `taskshift.log` stream for the whole
+                            service.</span
+                        >
+                    </button>
+                    <button class="tab-button" data-tab="scheduler_logs">
+                        <span class="tab-label">Scheduler logs</span>
+                        <span class="tab-caption"
+                            >Scheduler run lifecycle, queue snapshots, and run
+                            summaries.</span
+                        >
+                    </button>
+                    <button class="tab-button" data-tab="ml_logs">
+                        <span class="tab-label">ML logs</span>
+                        <span class="tab-caption"
+                            >Forecast model training, CatBoost refreshes, and
+                            model lifecycle events.</span
+                        >
+                    </button>
+                    <button class="tab-button" data-tab="job_runtime_logs">
+                        <span class="tab-label">Job promotion logs</span>
+                        <span class="tab-caption"
+                            >Per-run job decisions, mserver responses, and
+                            launch diagnostics.</span
                         >
                     </button>
                     <button class="tab-button" data-tab="jobs">
                         <span class="tab-label">Jobs</span>
                         <span class="tab-caption"
-                            >Launch-event journal with search by job id and
+                            >Promotion journal with search by job id and
                             status.</span
                         >
                     </button>
@@ -85,8 +112,8 @@
                 <div class="side-card">
                     <h3>Editing</h3>
                     <p>
-                        Cluster edits target the currently active cluster config
-                        file used by the scheduler.
+                        Configuration edits target TaskShift and web panel
+                        settings. Cluster topology is refreshed separately.
                     </p>
                 </div>
 
@@ -130,9 +157,19 @@
                                 >
                                     Run scheduler now
                                 </button>
+                                <button
+                                    class="secondary"
+                                    id="resetFailedJobsCacheButton"
+                                    type="button"
+                                >
+                                    Reset failed jobs cache
+                                </button>
                             </div>
                         </div>
                         <div class="metrics" id="systemStatusMetrics"></div>
+                        <p class="system-note" id="failedPoolCleanupText">
+                            Loading failed-job cache policy.
+                        </p>
                         <div class="system-grid">
                             <div class="system-pane">
                                 <h4>Next run</h4>
@@ -186,7 +223,7 @@
                                     id="reloadClusterSourceButton"
                                     type="button"
                                 >
-                                    Reload source
+                                    Reload topology
                                 </button>
                             </div>
                             <p id="clusterSourceText">
@@ -208,9 +245,45 @@
                     <div class="tree" id="clusterTree"></div>
                 </section>
 
+                <section class="panel" data-panel="resources">
+                    <div class="card">
+                        <h3 id="resourceTreeHeading">Free resource tree</h3>
+                        <p id="resourceTreeIntro">
+                            Current scheduler resource view after subtracting
+                            active running jobs from the cluster topology.
+                        </p>
+                    </div>
+                    <div class="grid two">
+                        <div class="card">
+                            <h3>Snapshot</h3>
+                            <p id="resourceSnapshotText">
+                                Loading resource snapshot.
+                            </p>
+                            <div class="metrics" id="resourceMetrics"></div>
+                        </div>
+                        <div class="card">
+                            <h3>Totals</h3>
+                            <p id="resourceTotalsText">
+                                Loading aggregate resources.
+                            </p>
+                            <div class="metrics" id="resourceTotalMetrics"></div>
+                        </div>
+                    </div>
+                    <div class="toolbar-row" style="margin-top: 18px">
+                        <button
+                            class="secondary"
+                            id="reloadResourceTreeButton"
+                            type="button"
+                        >
+                            Reload resources
+                        </button>
+                    </div>
+                    <div class="tree resource-tree" id="resourceTree"></div>
+                </section>
+
                 <section class="panel" data-panel="configs">
                     <div class="card">
-                        <h3>Editable config files</h3>
+                        <h3>Editable configuration files</h3>
                         <p>
                             Select a file, edit its contents, and save it back
                             to disk. YAML files are syntax-checked before write.
@@ -352,25 +425,25 @@
                     </div>
                 </section>
 
-                <section class="panel" data-panel="logs">
+                <section class="panel" data-panel="service_logs">
                     <div class="grid two">
                         <div class="card">
-                            <h3>Service log</h3>
-                            <p id="taskshiftLogPath">Loading log file path.</p>
-                            <div class="metrics" id="taskshiftLogMetrics"></div>
+                            <h3>Full service log</h3>
+                            <p id="serviceLogPath">Loading log file path.</p>
+                            <div class="metrics" id="serviceLogMetrics"></div>
                         </div>
                         <div class="card">
                             <h3>Filters</h3>
                             <div class="toolbar">
                                 <div class="toolbar-row">
                                     <input
-                                        id="taskshiftLogSearchInput"
+                                        id="serviceLogSearchInput"
                                         type="search"
-                                        placeholder="Search text in source or message"
+                                        placeholder="Search level, source, or message"
                                     />
                                     <button
                                         class="secondary"
-                                        id="reloadTaskshiftLogButton"
+                                        id="reloadServiceLogButton"
                                         type="button"
                                     >
                                         Reload log
@@ -378,25 +451,25 @@
                                 </div>
                                 <div
                                     class="status-filter-group"
-                                    id="taskshiftStatusFilters"
+                                    id="serviceStatusFilters"
                                 ></div>
                                 <div class="toolbar-row">
                                     <button
                                         class="secondary"
-                                        id="taskshiftPrevPageButton"
+                                        id="servicePrevPageButton"
                                         type="button"
                                     >
                                         Prev page
                                     </button>
                                     <div
                                         class="editor-meta"
-                                        id="taskshiftLogPageInfo"
+                                        id="serviceLogPageInfo"
                                     >
                                         Page 1 / 1
                                     </div>
                                     <button
                                         class="secondary"
-                                        id="taskshiftNextPageButton"
+                                        id="serviceNextPageButton"
                                         type="button"
                                     >
                                         Next page
@@ -405,13 +478,217 @@
                             </div>
                         </div>
                     </div>
-                    <div class="log-list" id="taskshiftLogList"></div>
+                    <div class="log-list" id="serviceLogList"></div>
+                </section>
+
+                <section class="panel" data-panel="scheduler_logs">
+                    <div class="grid two">
+                        <div class="card">
+                            <h3>Scheduler runtime log</h3>
+                            <p id="schedulerLogPath">Loading log file path.</p>
+                            <div class="metrics" id="schedulerLogMetrics"></div>
+                        </div>
+                        <div class="card">
+                            <h3>Filters</h3>
+                            <div class="toolbar">
+                                <div class="toolbar-row">
+                                    <input
+                                        id="schedulerLogSearchInput"
+                                        type="search"
+                                        placeholder="Search run id, trigger, status, or message"
+                                    />
+                                    <button
+                                        class="secondary"
+                                        id="reloadSchedulerLogButton"
+                                        type="button"
+                                    >
+                                        Reload log
+                                    </button>
+                                </div>
+                                <div
+                                    class="status-filter-group"
+                                    id="schedulerStatusFilters"
+                                ></div>
+                                <div class="toolbar-row">
+                                    <button
+                                        class="secondary"
+                                        id="schedulerPrevPageButton"
+                                        type="button"
+                                    >
+                                        Prev page
+                                    </button>
+                                    <div
+                                        class="editor-meta"
+                                        id="schedulerLogPageInfo"
+                                    >
+                                        Page 1 / 1
+                                    </div>
+                                    <button
+                                        class="secondary"
+                                        id="schedulerNextPageButton"
+                                        type="button"
+                                    >
+                                        Next page
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="log-list" id="schedulerLogList"></div>
+                </section>
+
+                <section class="panel" data-panel="ml_logs">
+                    <div class="grid two">
+                        <div class="card">
+                            <h3>Current forecast model</h3>
+                            <p id="mlModelSummary">
+                                Loading forecast model summary.
+                            </p>
+                            <div class="metrics" id="mlModelMetrics"></div>
+                            <div class="editor-meta" id="mlModelDataDir">
+                                Loading model paths.
+                            </div>
+                        </div>
+                        <div class="card">
+                            <h3>Future forecast</h3>
+                            <p id="mlForecastWindowText">
+                                Loading forecast window.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="grid two" style="margin-top: 18px">
+                        <div class="card">
+                            <h3>Future GPU forecast</h3>
+                            <p id="mlPredictionCaption">
+                                Loading prediction chart.
+                            </p>
+                            <div class="chart-card" id="mlPredictionChart"></div>
+                        </div>
+                        <div class="card">
+                            <h3>GPU seasonality</h3>
+                            <p id="mlSeasonalityCaption">
+                                Loading seasonality chart.
+                            </p>
+                            <div class="chart-card" id="mlDailySeasonalityChart"></div>
+                            <div class="chart-card" id="mlWeeklySeasonalityChart" style="margin-top: 12px"></div>
+                            <div class="chart-card" id="mlYearlySeasonalityChart" style="margin-top: 12px"></div>
+                        </div>
+                    </div>
+                    <div class="grid two">
+                        <div class="card">
+                            <h3>ML runtime log</h3>
+                            <p id="mlLogPath">Loading log file path.</p>
+                            <div class="metrics" id="mlLogMetrics"></div>
+                        </div>
+                        <div class="card">
+                            <h3>Filters</h3>
+                            <div class="toolbar">
+                                <div class="toolbar-row">
+                                    <input
+                                        id="mlLogSearchInput"
+                                        type="search"
+                                        placeholder="Search model kind, training status, or message"
+                                    />
+                                    <button
+                                        class="secondary"
+                                        id="reloadMlLogButton"
+                                        type="button"
+                                    >
+                                        Reload log
+                                    </button>
+                                </div>
+                                <div
+                                    class="status-filter-group"
+                                    id="mlStatusFilters"
+                                ></div>
+                                <div class="toolbar-row">
+                                    <button
+                                        class="secondary"
+                                        id="mlPrevPageButton"
+                                        type="button"
+                                    >
+                                        Prev page
+                                    </button>
+                                    <div
+                                        class="editor-meta"
+                                        id="mlLogPageInfo"
+                                    >
+                                        Page 1 / 1
+                                    </div>
+                                    <button
+                                        class="secondary"
+                                        id="mlNextPageButton"
+                                        type="button"
+                                    >
+                                        Next page
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="log-list" id="mlLogList"></div>
+                </section>
+
+                <section class="panel" data-panel="job_runtime_logs">
+                    <div class="grid two">
+                        <div class="card">
+                            <h3>Job runtime log</h3>
+                            <p id="jobRuntimeLogPath">Loading log file path.</p>
+                            <div class="metrics" id="jobRuntimeLogMetrics"></div>
+                        </div>
+                        <div class="card">
+                            <h3>Filters</h3>
+                            <div class="toolbar">
+                                <div class="toolbar-row">
+                                    <input
+                                        id="jobRuntimeLogSearchInput"
+                                        type="search"
+                                        placeholder="Search run id, job id, mserver, or reason"
+                                    />
+                                    <button
+                                        class="secondary"
+                                        id="reloadJobRuntimeLogButton"
+                                        type="button"
+                                    >
+                                        Reload log
+                                    </button>
+                                </div>
+                                <div
+                                    class="status-filter-group"
+                                    id="jobRuntimeStatusFilters"
+                                ></div>
+                                <div class="toolbar-row">
+                                    <button
+                                        class="secondary"
+                                        id="jobRuntimePrevPageButton"
+                                        type="button"
+                                    >
+                                        Prev page
+                                    </button>
+                                    <div
+                                        class="editor-meta"
+                                        id="jobRuntimeLogPageInfo"
+                                    >
+                                        Page 1 / 1
+                                    </div>
+                                    <button
+                                        class="secondary"
+                                        id="jobRuntimeNextPageButton"
+                                        type="button"
+                                    >
+                                        Next page
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="log-list" id="jobRuntimeLogList"></div>
                 </section>
 
                 <section class="panel" data-panel="jobs">
                     <div class="grid two">
                         <div class="card">
-                            <h3>Job launch log</h3>
+                            <h3>Job promotion log</h3>
                             <p id="jobLogPath">Loading job log file path.</p>
                             <div class="metrics" id="jobLogMetrics"></div>
                         </div>

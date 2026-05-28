@@ -2,13 +2,18 @@
 Unit tests for storage.series module - utilization calculation and overflow handling
 """
 
+from datetime import datetime
+
 import pytest
 
 from storage.series import (
     _calculate_utilization,
     _cleanup_overflow_points,
     _count_overflow_points,
+    build_historical_utilization_series,
 )
+from tests.fixtures.scheduler.scheduler_fixtures import build_mini_cluster_config
+from tests.integration.synthetic_data import INTERVAL_15M, SyntheticJobFactory
 
 
 class TestCalculateUtilization:
@@ -358,3 +363,25 @@ class TestCleanupIntegration:
 
         # Should clip the overflow after normal
         assert result[1]["cpu"] == 100.0  # Clipped from 120
+
+
+class TestSeriesRangeEnd:
+    def test_running_job_does_not_append_trailing_zero_bucket(self):
+        factory = SyntheticJobFactory()
+        rows = [factory.running_gpu_job(feature="type_a", node="cn-001", gpus=2)]
+        jobs = [row.toHistoricalJob() for row in rows]
+        now_timestamp = factory.base_time + (2 * INTERVAL_15M) + 300
+
+        series = build_historical_utilization_series(
+            jobs=jobs,
+            clusterConfig=build_mini_cluster_config(),
+            intervalMinutes=15,
+            nowTimestamp=now_timestamp,
+        )
+
+        overall_series = series["overall"]
+        assert overall_series
+        assert overall_series[-1]["gpu"] > 0.0
+        assert datetime.strptime(overall_series[-1]["time"], "%H:%M:%S %d.%m.%y") < datetime.fromtimestamp(
+            now_timestamp
+        )

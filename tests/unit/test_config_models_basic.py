@@ -219,17 +219,29 @@ class TestSchedulerConfigForecastFields:
         config = SchedulerConfig()
 
         assert config.forecast_model_dir == "artifacts/forecast_model"
+        assert config.forecast_model_update_interval_hours == 84
+        assert config.forecast_prediction_horizon_hours == 72
         assert config.forecast_skip_startup_training is False
+        assert config.timezone == "Europe/Moscow"
+        assert config.cluster_config_refresh_time == "00:30"
 
     def test_copy_preserves_forecast_model_fields(self):
         config = SchedulerConfig()
         config.forecast_model_dir = "artifacts/custom_forecast_model"
+        config.forecast_model_update_interval_hours = 96
+        config.forecast_prediction_horizon_hours = 48
         config.forecast_skip_startup_training = True
+        config.timezone = "UTC"
+        config.cluster_config_refresh_time = "01:15"
 
         cloned = config.copy()
 
         assert cloned.forecast_model_dir == "artifacts/custom_forecast_model"
+        assert cloned.forecast_model_update_interval_hours == 96
+        assert cloned.forecast_prediction_horizon_hours == 48
         assert cloned.forecast_skip_startup_training is True
+        assert cloned.timezone == "UTC"
+        assert cloned.cluster_config_refresh_time == "01:15"
 
 
 class TestSchedulerConfigConnectorFields:

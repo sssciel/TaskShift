@@ -23,20 +23,49 @@ reloadCalendarButton.addEventListener('click', () => {
 createCalendarYearButton.addEventListener('click', () => createCalendarYear().catch((error) => setStatus(error.message, true)));
 createCalendarFileButton.addEventListener('click', () => createCalendarFile().catch((error) => setStatus(error.message, true)));
 runSchedulerNowButton.addEventListener('click', () => runSchedulerNow().catch((error) => setStatus(error.message, true)));
+resetFailedJobsCacheButton.addEventListener('click', () => resetFailedJobsCache().catch((error) => setStatus(error.message, true)));
 reloadClusterSourceButton.addEventListener('click', () => loadClusterTree().catch((error) => setStatus(error.message, true)));
+reloadResourceTreeButton.addEventListener('click', () => loadResourceTree().catch((error) => setStatus(error.message, true)));
 clusterSourceSelect.addEventListener('change', () => {
   selectedClusterSourcePath = clusterSourceSelect.value;
   loadClusterTree().catch((error) => setStatus(error.message, true));
 });
-reloadTaskshiftLogButton.addEventListener('click', () => loadTaskshiftLogs().catch((error) => setStatus(error.message, true)));
+reloadServiceLogButton.addEventListener('click', () => loadServiceLogs().catch((error) => setStatus(error.message, true)));
+reloadSchedulerLogButton.addEventListener('click', () => loadSchedulerRuntimeLogs().catch((error) => setStatus(error.message, true)));
+reloadMlLogButton.addEventListener('click', () => loadMlRuntimeLogs().catch((error) => setStatus(error.message, true)));
+reloadJobRuntimeLogButton.addEventListener('click', () => loadJobRuntimeLogs().catch((error) => setStatus(error.message, true)));
 reloadJobLogButton.addEventListener('click', () => loadJobLogs().catch((error) => setStatus(error.message, true)));
-taskshiftPrevPageButton.addEventListener('click', () => {
-  taskshiftLogPage = Math.max(1, taskshiftLogPage - 1);
-  loadTaskshiftLogs().catch((error) => setStatus(error.message, true));
+servicePrevPageButton.addEventListener('click', () => {
+  serviceLogPage = Math.max(1, serviceLogPage - 1);
+  loadServiceLogs().catch((error) => setStatus(error.message, true));
 });
-taskshiftNextPageButton.addEventListener('click', () => {
-  taskshiftLogPage += 1;
-  loadTaskshiftLogs().catch((error) => setStatus(error.message, true));
+serviceNextPageButton.addEventListener('click', () => {
+  serviceLogPage += 1;
+  loadServiceLogs().catch((error) => setStatus(error.message, true));
+});
+schedulerPrevPageButton.addEventListener('click', () => {
+  schedulerLogPage = Math.max(1, schedulerLogPage - 1);
+  loadSchedulerRuntimeLogs().catch((error) => setStatus(error.message, true));
+});
+schedulerNextPageButton.addEventListener('click', () => {
+  schedulerLogPage += 1;
+  loadSchedulerRuntimeLogs().catch((error) => setStatus(error.message, true));
+});
+mlPrevPageButton.addEventListener('click', () => {
+  mlLogPage = Math.max(1, mlLogPage - 1);
+  loadMlRuntimeLogs().catch((error) => setStatus(error.message, true));
+});
+mlNextPageButton.addEventListener('click', () => {
+  mlLogPage += 1;
+  loadMlRuntimeLogs().catch((error) => setStatus(error.message, true));
+});
+jobRuntimePrevPageButton.addEventListener('click', () => {
+  jobRuntimeLogPage = Math.max(1, jobRuntimeLogPage - 1);
+  loadJobRuntimeLogs().catch((error) => setStatus(error.message, true));
+});
+jobRuntimeNextPageButton.addEventListener('click', () => {
+  jobRuntimeLogPage += 1;
+  loadJobRuntimeLogs().catch((error) => setStatus(error.message, true));
 });
 jobPrevPageButton.addEventListener('click', () => {
   jobLogPage = Math.max(1, jobLogPage - 1);
@@ -46,19 +75,45 @@ jobNextPageButton.addEventListener('click', () => {
   jobLogPage += 1;
   loadJobLogs().catch((error) => setStatus(error.message, true));
 });
-taskshiftStatusFilters.addEventListener('change', () => {
-  taskshiftLogPage = 1;
-  loadTaskshiftLogs().catch((error) => setStatus(error.message, true));
+serviceStatusFilters.addEventListener('change', () => {
+  serviceLogPage = 1;
+  loadServiceLogs().catch((error) => setStatus(error.message, true));
+});
+schedulerStatusFilters.addEventListener('change', () => {
+  schedulerLogPage = 1;
+  loadSchedulerRuntimeLogs().catch((error) => setStatus(error.message, true));
+});
+mlStatusFilters.addEventListener('change', () => {
+  mlLogPage = 1;
+  loadMlRuntimeLogs().catch((error) => setStatus(error.message, true));
+});
+jobRuntimeStatusFilters.addEventListener('change', () => {
+  jobRuntimeLogPage = 1;
+  loadJobRuntimeLogs().catch((error) => setStatus(error.message, true));
 });
 jobStatusFilters.addEventListener('change', () => {
   jobLogPage = 1;
   loadJobLogs().catch((error) => setStatus(error.message, true));
 });
-taskshiftLogSearchInput.addEventListener('keydown', (event) => {
+schedulerLogSearchInput.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') {
     event.preventDefault();
-    taskshiftLogPage = 1;
-    loadTaskshiftLogs().catch((error) => setStatus(error.message, true));
+    schedulerLogPage = 1;
+    loadSchedulerRuntimeLogs().catch((error) => setStatus(error.message, true));
+  }
+});
+mlLogSearchInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    mlLogPage = 1;
+    loadMlRuntimeLogs().catch((error) => setStatus(error.message, true));
+  }
+});
+jobRuntimeLogSearchInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    jobRuntimeLogPage = 1;
+    loadJobRuntimeLogs().catch((error) => setStatus(error.message, true));
   }
 });
 jobLogIdInput.addEventListener('keydown', (event) => {
@@ -75,15 +130,27 @@ jobLogSearchInput.addEventListener('keydown', (event) => {
     loadJobLogs().catch((error) => setStatus(error.message, true));
   }
 });
+serviceLogSearchInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    serviceLogPage = 1;
+    loadServiceLogs().catch((error) => setStatus(error.message, true));
+  }
+});
 
 async function initializePanel() {
   await loadClusterSources();
   await Promise.all([
     loadSystemStatus(),
     loadClusterTree(),
+    loadResourceTree().catch((error) => setStatus(error.message, true)),
     loadConfigTargets(),
     loadCalendarCatalog(),
-    loadTaskshiftLogs(),
+    loadForecastModelInsights(),
+    loadServiceLogs(),
+    loadSchedulerRuntimeLogs(),
+    loadMlRuntimeLogs(),
+    loadJobRuntimeLogs(),
     loadJobLogs(),
   ]);
   if (systemStatusPollHandle === null) {

@@ -1,4 +1,5 @@
 import time
+from datetime import datetime
 
 _launch_attempts: list[dict] = []
 _failed_job_pool: set[int] = set()
@@ -25,6 +26,29 @@ def reset_cache():
     _launch_attempts = []
     _failed_job_pool = set()
     _initialized_at = None
+
+
+def reset_failed_job_pool():
+    _maybe_cleanup()
+    global _failed_job_pool
+    _failed_job_pool = set()
+
+
+def get_failed_job_pool_cleanup_status() -> dict:
+    if _initialized_at is None:
+        return {
+            "cleanup_interval_seconds": CLEANUP_INTERVAL_SECONDS,
+            "initialized_at": None,
+            "next_cleanup_at": None,
+        }
+
+    initializedAt = datetime.fromtimestamp(_initialized_at)
+    nextCleanupAt = datetime.fromtimestamp(_initialized_at + CLEANUP_INTERVAL_SECONDS)
+    return {
+        "cleanup_interval_seconds": CLEANUP_INTERVAL_SECONDS,
+        "initialized_at": initializedAt.isoformat(timespec="seconds"),
+        "next_cleanup_at": nextCleanupAt.isoformat(timespec="seconds"),
+    }
 
 
 def load_launch_attempts() -> list[dict]:

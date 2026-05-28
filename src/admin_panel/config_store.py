@@ -1,26 +1,20 @@
 from pathlib import Path
 
-from config import getLatestClusterConfigFile, schedulerConfigFile, serverConfigFile
+from config import schedulerConfigFile, serverConfigFile
 from config.models import get_yaml_module
 
 
 def get_config_targets() -> list[dict]:
     return [
         {
-            "id": "cluster_active",
-            "label": "Active cluster config",
-            "path": str(Path(getLatestClusterConfigFile()).resolve()),
-            "description": "Cluster snapshot currently used by the scheduler.",
-        },
-        {
             "id": "scheduler",
-            "label": "Scheduler config",
+            "label": "TaskShift configuration",
             "path": str(Path(schedulerConfigFile).resolve()),
-            "description": "Scheduler limits, forecast path, and snapshot cadence.",
+            "description": "Scheduler limits, forecast, connector, and snapshot cadence.",
         },
         {
             "id": "server",
-            "label": "Web server config",
+            "label": "Web panel configuration",
             "path": str(Path(serverConfigFile).resolve()),
             "description": "Host and port for the admin panel.",
         },

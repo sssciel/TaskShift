@@ -117,6 +117,13 @@ class TestFailedJobPool:
         cache_module.save_failed_job_pool([1, 2, 2, 3, 3, 3])
         assert cache_module.load_failed_job_pool() == {1, 2, 3}
 
+    def test_reset_failed_job_pool_only_clears_failed_pool(self):
+        cache_module.save_launch_attempts([{"job_id": 1}])
+        cache_module.save_failed_job_pool([1, 2, 3])
+        cache_module.reset_failed_job_pool()
+        assert cache_module.load_failed_job_pool() == set()
+        assert cache_module.load_launch_attempts() == [{"job_id": 1}]
+
 
 # ---------------------------------------------------------------------------
 # 4. TestCleanupInterval
@@ -160,3 +167,16 @@ class TestCleanupInterval:
 
         cache_module.save_failed_job_pool([7, 8, 9])
         assert cache_module.load_failed_job_pool() == {7, 8, 9}
+
+    def test_cleanup_status_without_initialized_cache(self):
+        status = cache_module.get_failed_job_pool_cleanup_status()
+        assert status["cleanup_interval_seconds"] == cache_module.CLEANUP_INTERVAL_SECONDS
+        assert status["initialized_at"] is None
+        assert status["next_cleanup_at"] is None
+
+    def test_cleanup_status_with_initialized_cache(self):
+        cache_module.save_failed_job_pool([5, 6])
+        status = cache_module.get_failed_job_pool_cleanup_status()
+        assert status["cleanup_interval_seconds"] == cache_module.CLEANUP_INTERVAL_SECONDS
+        assert status["initialized_at"] is not None
+        assert status["next_cleanup_at"] is not None

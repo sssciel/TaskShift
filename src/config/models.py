@@ -3,6 +3,7 @@ import re
 import shlex
 import subprocess
 from dataclasses import dataclass
+from zoneinfo import ZoneInfo
 
 try:
     import yaml
@@ -675,8 +676,11 @@ class SchedulerConfig:
     DEFAULT_FORECAST_ENABLED = False
     DEFAULT_FORECAST_DATA_DIR = "exports/historical_utilization/current"
     DEFAULT_FORECAST_MODEL_DIR = "artifacts/forecast_model"
+    DEFAULT_FORECAST_MODEL_UPDATE_INTERVAL_HOURS = 84
+    DEFAULT_FORECAST_PREDICTION_HORIZON_HOURS = 72
     DEFAULT_FORECAST_SKIP_STARTUP_TRAINING = False
-    DEFAULT_CLUSTER_CONFIG_SNAPSHOT_INTERVAL_HOURS = 24
+    DEFAULT_TIMEZONE = "Europe/Moscow"
+    DEFAULT_CLUSTER_CONFIG_REFRESH_TIME = "00:30"
     DEFAULT_WEB_PANEL_ENABLED = True
     DEFAULT_HOT_RELOAD_ENABLED = False
     DEFAULT_CLUSTER_CONFIG_REFRESH_COMMAND = ["cat", "configs/slurm.conf"]
@@ -691,12 +695,17 @@ class SchedulerConfig:
         self.forecast_enabled = self.DEFAULT_FORECAST_ENABLED
         self.forecast_data_dir = self.DEFAULT_FORECAST_DATA_DIR
         self.forecast_model_dir = self.DEFAULT_FORECAST_MODEL_DIR
+        self.forecast_model_update_interval_hours = (
+            self.DEFAULT_FORECAST_MODEL_UPDATE_INTERVAL_HOURS
+        )
+        self.forecast_prediction_horizon_hours = (
+            self.DEFAULT_FORECAST_PREDICTION_HORIZON_HOURS
+        )
         self.forecast_skip_startup_training = (
             self.DEFAULT_FORECAST_SKIP_STARTUP_TRAINING
         )
-        self.cluster_config_snapshot_interval_hours = (
-            self.DEFAULT_CLUSTER_CONFIG_SNAPSHOT_INTERVAL_HOURS
-        )
+        self.timezone = self.DEFAULT_TIMEZONE
+        self.cluster_config_refresh_time = self.DEFAULT_CLUSTER_CONFIG_REFRESH_TIME
         self.web_panel_enabled = self.DEFAULT_WEB_PANEL_ENABLED
         self.hot_reload_enabled = self.DEFAULT_HOT_RELOAD_ENABLED
         self.cluster_config_refresh_command = list(
@@ -728,13 +737,32 @@ class SchedulerConfig:
         self.forecast_model_dir = config.get(
             "forecast_model_dir", self.DEFAULT_FORECAST_MODEL_DIR
         )
+        self.forecast_model_update_interval_hours = self._normalize_positive_number(
+            config.get(
+                "forecast_model_update_interval_hours",
+                self.DEFAULT_FORECAST_MODEL_UPDATE_INTERVAL_HOURS,
+            ),
+            "forecast_model_update_interval_hours",
+        )
+        self.forecast_prediction_horizon_hours = self._normalize_positive_number(
+            config.get(
+                "forecast_prediction_horizon_hours",
+                self.DEFAULT_FORECAST_PREDICTION_HORIZON_HOURS,
+            ),
+            "forecast_prediction_horizon_hours",
+        )
         self.forecast_skip_startup_training = config.get(
             "forecast_skip_startup_training",
             self.DEFAULT_FORECAST_SKIP_STARTUP_TRAINING,
         )
-        self.cluster_config_snapshot_interval_hours = config.get(
-            "cluster_config_snapshot_interval_hours",
-            self.DEFAULT_CLUSTER_CONFIG_SNAPSHOT_INTERVAL_HOURS,
+        self.timezone = self._normalize_timezone_name(
+            config.get("timezone", self.DEFAULT_TIMEZONE)
+        )
+        self.cluster_config_refresh_time = self._normalize_time_of_day_string(
+            config.get(
+                "cluster_config_refresh_time",
+                self.DEFAULT_CLUSTER_CONFIG_REFRESH_TIME,
+            ),
         )
         self.web_panel_enabled = config.get(
             "web_panel_enabled", self.DEFAULT_WEB_PANEL_ENABLED
@@ -795,15 +823,26 @@ class SchedulerConfig:
         if self.forecast_model_dir is not None:
             result["forecast_model_dir"] = self.forecast_model_dir
 
+        if self.forecast_model_update_interval_hours is not None:
+            result["forecast_model_update_interval_hours"] = (
+                self.forecast_model_update_interval_hours
+            )
+
+        if self.forecast_prediction_horizon_hours is not None:
+            result["forecast_prediction_horizon_hours"] = (
+                self.forecast_prediction_horizon_hours
+            )
+
         if self.forecast_skip_startup_training is not None:
             result["forecast_skip_startup_training"] = bool(
                 self.forecast_skip_startup_training
             )
 
-        if self.cluster_config_snapshot_interval_hours is not None:
-            result["cluster_config_snapshot_interval_hours"] = (
-                self.cluster_config_snapshot_interval_hours
-            )
+        if self.timezone is not None:
+            result["timezone"] = self.timezone
+
+        if self.cluster_config_refresh_time is not None:
+            result["cluster_config_refresh_time"] = self.cluster_config_refresh_time
 
         if self.web_panel_enabled is not None:
             result["web_panel_enabled"] = bool(self.web_panel_enabled)
@@ -837,12 +876,17 @@ class SchedulerConfig:
         clone.forecast_enabled = self.forecast_enabled
         clone.forecast_data_dir = self.forecast_data_dir
         clone.forecast_model_dir = self.forecast_model_dir
+        clone.forecast_model_update_interval_hours = (
+            self.forecast_model_update_interval_hours
+        )
+        clone.forecast_prediction_horizon_hours = (
+            self.forecast_prediction_horizon_hours
+        )
         clone.forecast_skip_startup_training = (
             self.forecast_skip_startup_training
         )
-        clone.cluster_config_snapshot_interval_hours = (
-            self.cluster_config_snapshot_interval_hours
-        )
+        clone.timezone = self.timezone
+        clone.cluster_config_refresh_time = self.cluster_config_refresh_time
         clone.web_panel_enabled = self.web_panel_enabled
         clone.hot_reload_enabled = self.hot_reload_enabled
         clone.cluster_config_refresh_command = list(self.cluster_config_refresh_command)
@@ -899,3 +943,19 @@ class SchedulerConfig:
         raise ValueError(
             "cluster_config_refresh_command must be either a shell string or a YAML list"
         )
+
+    def _normalize_timezone_name(self, value):
+        normalized = str(value or self.DEFAULT_TIMEZONE).strip() or self.DEFAULT_TIMEZONE
+        ZoneInfo(normalized)
+        return normalized
+
+    def _normalize_time_of_day_string(self, value):
+        normalized = str(value or self.DEFAULT_CLUSTER_CONFIG_REFRESH_TIME).strip()
+        if not re.fullmatch(r"\d{2}:\d{2}", normalized):
+            raise ValueError("cluster_config_refresh_time must use HH:MM format")
+
+        hour, minute = normalized.split(":")
+        if not (0 <= int(hour) <= 23 and 0 <= int(minute) <= 59):
+            raise ValueError("cluster_config_refresh_time must be a valid 24-hour time")
+
+        return normalized

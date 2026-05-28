@@ -66,6 +66,7 @@ def _make_runtime_state(
             "launched_count": last_run_launched_count,
             "skipped_by_timelimit": 0,
             "skipped_by_resources": 0,
+            "skipped_by_forecast": 0,
             "skipped_by_failed_attempt_pool": 0,
             "failed_job_pool_size": last_run_failed_job_pool_size,
             "attempted_job_ids": last_run_attempted_job_ids or [],
@@ -124,11 +125,14 @@ def _build_payload(
     service_running=False,
     service_pid=None,
     max_launched_jobs=10,
+    failed_job_pool_cleanup_interval_seconds=12 * 60 * 60,
+    failed_job_pool_next_cleanup_at=None,
 ):
     """Build system status payload with all necessary mocks."""
     with (
         patch("admin_panel.system_status.get_scheduler_service_status") as mock_status,
         patch("admin_panel.system_status.getSchedulerConfig") as mock_config,
+        patch("admin_panel.system_status.get_failed_job_pool_cleanup_status") as mock_cleanup,
         patch("admin_panel.system_status.SchedulerRuntimeStateStore") as mock_store_cls,
     ):
         mock_status.return_value = {
@@ -138,6 +142,12 @@ def _build_payload(
             "log_file": "/l",
         }
         mock_config.return_value.max_launched_jobs = max_launched_jobs
+        mock_config.return_value.timezone = "Europe/Moscow"
+        mock_cleanup.return_value = {
+            "cleanup_interval_seconds": failed_job_pool_cleanup_interval_seconds,
+            "initialized_at": None,
+            "next_cleanup_at": failed_job_pool_next_cleanup_at,
+        }
         mock_store = MagicMock()
         mock_store.read.return_value = runtime_state
         mock_store.filePath = Path("/logs/scheduler_runtime_state.json")
@@ -361,6 +371,25 @@ class TestBuildSystemStatusPayloadControls:
         payload = _build_payload(_make_runtime_state())
         assert "runtime_file" in payload
         assert "scheduler_runtime_state.json" in payload["runtime_file"]
+
+    def test_failed_job_pool_cleanup_config_included(self):
+        next_cleanup_at = (datetime.now() + timedelta(hours=12)).isoformat(timespec="seconds")
+        payload = _build_payload(
+            _make_runtime_state(),
+            failed_job_pool_cleanup_interval_seconds=43200,
+            failed_job_pool_next_cleanup_at=next_cleanup_at,
+        )
+        assert payload["controls"]["failed_job_pool_cleanup_interval_seconds"] == 43200
+        assert payload["controls"]["failed_job_pool_next_cleanup_at"] == next_cleanup_at
+
+    def test_failed_job_pool_reset_allowed_when_controller_attached(self):
+        ctrl = MagicMock()
+        payload = _build_payload(_make_runtime_state(), controller=ctrl)
+        assert payload["controls"]["can_reset_failed_job_pool"] is True
+
+    def test_failed_job_pool_reset_unavailable_without_controller(self):
+        payload = _build_payload(_make_runtime_state(), controller=None)
+        assert payload["controls"]["can_reset_failed_job_pool"] is False
 
 
 # ════════════════════════════════════════════════════════════════════════════════

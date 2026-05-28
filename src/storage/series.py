@@ -144,7 +144,10 @@ def build_historical_utilization_series(
 
     if overallEvents:
         rangeStart = floor_timestamp(min(overallEvents.keys()), intervalSeconds)
-        rangeEnd = ceil_timestamp(max(overallEvents.keys()), intervalSeconds)
+        rangeEnd = _resolve_series_range_end(
+            maxEventTimestamp=max(overallEvents.keys()),
+            intervalSeconds=intervalSeconds,
+        )
     else:
         return {**{feature: [] for feature in featureNames}, "overall": []}
 
@@ -392,6 +395,19 @@ def _build_overall_series(
         )
 
     return overallSeries
+
+
+def _resolve_series_range_end(maxEventTimestamp: int, intervalSeconds: int) -> int:
+    """
+    Convert the last event timestamp into the last bucket start we can safely emit.
+
+    Utilization series points represent bucket starts. Exported events also include
+    negative deltas at exact job end timestamps, including "now" for running jobs.
+    Using a ceiling boundary here appends one synthetic trailing bucket where those
+    end deltas have already been applied, which produces an artificial zero tail.
+    """
+    safeTimestamp = max(0, int(maxEventTimestamp) - 1)
+    return floor_timestamp(safeTimestamp, intervalSeconds)
 
 
 def _calculate_utilization(usedCapacity: float, totalCapacity: int) -> float:

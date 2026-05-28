@@ -9,6 +9,7 @@ APP_JS_FILES = [
     "js/toast.js",
     "js/system.js",
     "js/cluster.js",
+    "js/resource_tree.js",
     "js/configs.js",
     "js/calendars.js",
     "js/logs.js",

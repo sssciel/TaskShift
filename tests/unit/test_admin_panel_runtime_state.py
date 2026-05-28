@@ -44,6 +44,7 @@ def _sample_job_summary(**overrides):
         "launched_count": 2,
         "skipped_by_timelimit": 1,
         "skipped_by_resources": 2,
+        "skipped_by_forecast": 3,
         "skipped_by_failed_attempt_pool": 1,
         "failed_job_pool_size": 1,
         "attempted_job_ids": [1001, 1002],
@@ -122,6 +123,7 @@ class TestSchedulerControlPlaneExecuteSuccess:
         assert lr["launched_count"] == 2
         assert lr["skipped_by_timelimit"] == 1
         assert lr["skipped_by_resources"] == 2
+        assert lr["skipped_by_forecast"] == 3
         assert lr["skipped_by_failed_attempt_pool"] == 1
         assert lr["failed_job_pool_size"] == 1
         assert lr["attempted_job_ids"] == [1001, 1002]
@@ -198,6 +200,31 @@ class TestSchedulerControlPlaneExecuteSuccess:
         assert lr["pending_job_count"] == 0
         assert lr["running_job_count"] == 0
         assert lr["launched_count"] == 0
+
+
+class TestSchedulerControlPlaneFailedPoolReset:
+    def test_reset_failed_job_cache_updates_runtime_state(self, tmp_path):
+        cp = _make_control_plane(tmp_path)
+        state = cp.get_state()
+        state["last_run"]["failed_job_pool_size"] = 3
+        cp.stateStore.write(state)
+
+        with patch("scheduler.runtime_state.reset_failed_job_pool") as mock_reset:
+            result = cp.reset_failed_job_cache()
+
+        mock_reset.assert_called_once_with()
+        assert result["last_run"]["failed_job_pool_size"] == 0
+        assert cp.get_state()["last_run"]["failed_job_pool_size"] == 0
+
+    def test_reset_failed_job_cache_rejected_while_run_in_progress(self, tmp_path):
+        cp = _make_control_plane(tmp_path)
+        acquired = cp._runLock.acquire(blocking=False)
+        assert acquired is True
+        try:
+            with pytest.raises(RuntimeError, match="already in progress"):
+                cp.reset_failed_job_cache()
+        finally:
+            cp._runLock.release()
 
 
 # ════════════════════════════════════════════════════════════════════════════════

@@ -2,6 +2,8 @@ import json
 import logging
 from pathlib import Path
 import numpy as np
+from datetime import datetime
+from config.logger import append_forecast_runtime_event, build_runtime_log_event
 
 try:
     from loguru import logger
@@ -12,10 +14,13 @@ except ModuleNotFoundError:
 
 from .models import FeatureForecast
 from .training import (
+    DEFAULT_FORECAST_PREDICTION_HORIZON_HOURS,
+    DEFAULT_MODEL_UPDATE_INTERVAL_HOURS,
     TARGET_HORIZON_MINUTES,
-    ensure_fresh_forecast_model,
     load_artifact,
+    load_forecast_insights,
     resolve_model_dir,
+    resolve_data_dir,
     resolve_series_dir,
 )
 
@@ -29,7 +34,7 @@ class ForecastService:
         projectRoot: str | Path | None = None,
     ):
         self.projectRoot = Path(projectRoot).resolve() if projectRoot else Path(__file__).resolve().parents[2]
-        self.dataDir = Path(dataDir).resolve() if dataDir else None
+        self.dataDir = resolve_data_dir(self.projectRoot, dataDir) if dataDir else None
         configModelDir = getattr(schedulerConfig, "forecast_model_dir", None)
         resolvedModelDirInput = modelDir or configModelDir
         self.modelDir = (
@@ -37,11 +42,20 @@ class ForecastService:
             if resolvedModelDirInput
             else None
         )
-        self.skipStartupTraining = bool(
-            getattr(schedulerConfig, "forecast_skip_startup_training", False)
+        self.timezoneName = getattr(schedulerConfig, "timezone", "Europe/Moscow")
+        self.modelUpdateIntervalHours = getattr(
+            schedulerConfig,
+            "forecast_model_update_interval_hours",
+            DEFAULT_MODEL_UPDATE_INTERVAL_HOURS,
+        )
+        self.forecastPredictionHorizonHours = getattr(
+            schedulerConfig,
+            "forecast_prediction_horizon_hours",
+            DEFAULT_FORECAST_PREDICTION_HORIZON_HOURS,
         )
         self.averageLoadsByFeature = self._loadAverageLoads()
-        self.forecastArtifact = self._loadOrTrainArtifact()
+        self.forecastArtifact = self._loadArtifact()
+        self.forecastInsights = self._loadInsights()
 
     def buildFeatureForecast(self, featureName: str, horizonMinutes: int) -> FeatureForecast:
         averageLoads = self.averageLoadsByFeature.get(featureName, {})
@@ -68,8 +82,13 @@ class ForecastService:
             modelDir=self.modelDir,
             projectRoot=self.projectRoot,
             refreshData=refreshData,
+            eventWriter=append_forecast_runtime_event,
+            timezoneName=self.timezoneName,
+            modelUpdateIntervalHours=self.modelUpdateIntervalHours,
+            forecastPredictionHorizonHours=self.forecastPredictionHorizonHours,
         )
         self.forecastArtifact = artifact
+        self.forecastInsights = self._loadInsights()
         self.averageLoadsByFeature = self._loadAverageLoads()
         return artifact
 
@@ -95,24 +114,39 @@ class ForecastService:
         )
         return averageLoadsByFeature
 
-    def _loadOrTrainArtifact(self):
+    def _loadArtifact(self):
         if self.modelDir is None:
             return None
-        if self.dataDir is None:
-            return load_artifact(self.modelDir)
-        try:
-            return ensure_fresh_forecast_model(
-                dataDir=self.dataDir,
-                modelDir=self.modelDir,
-                projectRoot=self.projectRoot,
-                skipStartupTraining=self.skipStartupTraining,
+        artifact = load_artifact(self.modelDir)
+        if artifact is None:
+            logger.warning(
+                f"Forecast model artifact is not available in '{self.modelDir}'. "
+                "Scheduler will fall back to the historical GPU load baseline until startup bootstrap trains a model."
             )
+            append_forecast_runtime_event(
+                build_runtime_log_event(
+                    category="forecast_runtime",
+                    status="BOOTSTRAP_SKIPPED",
+                    level="WARNING",
+                    eventType="BOOTSTRAP_SKIPPED",
+                    message=(
+                        "Forecast model artifact is not available during scheduler initialization. "
+                        "Using historical GPU baseline until a startup/bootstrap training completes."
+                    ),
+                    source="forecast.service",
+                    model_dir=str(self.modelDir),
+                )
+            )
+        return artifact
+
+    def _loadInsights(self):
+        if self.modelDir is None:
+            return None
+        try:
+            return load_forecast_insights(self.modelDir)
         except Exception as error:
-            logger.warning(f"Failed to refresh forecast model artifact: {error}")
-            artifact = load_artifact(self.modelDir)
-            if artifact is not None:
-                logger.warning("Using the previously saved forecast artifact after refresh failure")
-            return artifact
+            logger.warning(f"Failed to load forecast insights from '{self.modelDir}': {error}")
+            return None
 
     def _resolveSeriesDir(self, dataDir: Path) -> Path | None:
         if not dataDir.exists() or not dataDir.is_dir():
@@ -173,10 +207,41 @@ class ForecastService:
             featureAverageLoads = self.averageLoadsByFeature.get(featureName, {})
             return float(featureAverageLoads.get("gpu", fallbackAverage or 0.0))
 
-        prediction = float(self.forecastArtifact.last_prediction_gpu_percent)
-        if horizonMinutes <= TARGET_HORIZON_MINUTES:
-            return prediction
+        forecastPoints = self._selectForecastPointsForHorizon(horizonMinutes)
+        if forecastPoints:
+            return float(np.mean([point for point in forecastPoints]))
 
-        requiredWindows = max(1, int((horizonMinutes + TARGET_HORIZON_MINUTES - 1) // TARGET_HORIZON_MINUTES))
-        repeatedPredictions = [prediction] * requiredWindows
-        return float(np.median(repeatedPredictions))
+        return float(self.forecastArtifact.last_prediction_gpu_percent)
+
+    def _selectForecastPointsForHorizon(self, horizonMinutes: int) -> list[float]:
+        if self.forecastArtifact is None:
+            return []
+        metadata = self.forecastArtifact.metadata
+        points = []
+        if self.forecastInsights is not None:
+            points = self.forecastInsights.get("future_forecast") or []
+        if not points:
+            points = metadata.get("forecast_points") or []
+        if not points:
+            return []
+        now = datetime.now().replace(tzinfo=None)
+        requiredWindows = max(
+            1,
+            int((horizonMinutes + TARGET_HORIZON_MINUTES - 1) // TARGET_HORIZON_MINUTES),
+        )
+        selected = []
+        for point in points:
+            windowEndValue = point.get("window_end_at")
+            try:
+                windowEnd = datetime.fromisoformat(str(windowEndValue)).replace(tzinfo=None)
+            except (TypeError, ValueError):
+                windowEnd = None
+            if windowEnd is not None and windowEnd <= now:
+                continue
+            value = point.get("predicted_gpu_mean_6h")
+            if value is None:
+                continue
+            selected.append(float(value))
+            if len(selected) >= requiredWindows:
+                break
+        return selected

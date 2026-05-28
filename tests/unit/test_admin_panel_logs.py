@@ -1,11 +1,15 @@
 """Unit tests for admin_panel.logs module"""
 
 import json
+from pathlib import Path
 from unittest.mock import patch
 
 from admin_panel.logs import (
     TASKSHIFT_LOG_PATTERN,
+    build_forecast_runtime_log_payload,
     build_job_logs_payload,
+    build_job_runtime_log_payload,
+    build_scheduler_runtime_log_payload,
     build_taskshift_log_payload,
     normalize_job_log_status,
     normalize_log_limit,
@@ -549,6 +553,18 @@ class TestBuildTaskshiftLogPayload:
         assert len(result["entries"]) == 1
         assert result["entries"][0]["timestamp"] == "2025-01-15 10:30,00,123"
 
+    def test_streams_taskshift_log_without_read_text(self, tmp_path):
+        self._write_log(
+            tmp_path,
+            "2025-01-15 10:30:00.000 | INFO | scheduler | Streamed entry",
+        )
+        with (
+            patch("admin_panel.logs.get_logs_root", return_value=tmp_path),
+            patch.object(Path, "read_text", side_effect=AssertionError("read_text should not be used")),
+        ):
+            result = build_taskshift_log_payload()
+        assert result["total_entries"] == 1
+
 
 # ════════════════════════════════════════════════════════════════════════════════
 # 6. TestBuildJobLogsPayload
@@ -909,4 +925,142 @@ class TestBuildJobLogsPayload:
         with patch("admin_panel.logs.get_logs_root", return_value=tmp_path):
             result = build_job_logs_payload(jobId="job", statuses=["failed"])
         assert result["filtered_entries"] == 1
+        assert result["entries"][0]["status"] == "LAUNCH_FAILED"
+
+    def test_streams_job_log_without_read_text(self, tmp_path):
+        self._write_jsonl(tmp_path, '{"job_id": "job-001", "status": "attempted"}')
+        with (
+            patch("admin_panel.logs.get_logs_root", return_value=tmp_path),
+            patch.object(Path, "read_text", side_effect=AssertionError("read_text should not be used")),
+        ):
+            result = build_job_logs_payload()
+        assert result["total_entries"] == 1
+
+
+class TestBuildStructuredRuntimeLogPayload:
+    def _write_jsonl(self, tmp_path, file_name, content):
+        (tmp_path / file_name).write_text(content, encoding="utf-8")
+
+    def test_scheduler_runtime_payload_parses_entries_and_run_ids(self, tmp_path):
+        lines = "\n".join(
+            [
+                json.dumps(
+                    {
+                        "timestamp": "2026-06-08T18:00:00",
+                        "status": "RUN_STARTED",
+                        "level": "INFO",
+                        "message": "Scheduler tick started.",
+                        "run_id": "run-a",
+                        "trigger": "scheduled",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "timestamp": "2026-06-08T18:00:05",
+                        "status": "RUN_FINISHED",
+                        "level": "INFO",
+                        "message": "Scheduler tick finished.",
+                        "run_id": "run-a",
+                        "launched_count": 2,
+                    }
+                ),
+            ]
+        )
+        self._write_jsonl(tmp_path, "scheduler_runtime.jsonl", lines)
+        with patch("admin_panel.logs.get_logs_root", return_value=tmp_path):
+            result = build_scheduler_runtime_log_payload()
+        assert result["total_entries"] == 2
+        assert result["run_count"] == 1
+        assert result["entries"][0]["status"] == "RUN_FINISHED"
+
+    def test_forecast_runtime_payload_filters_by_status(self, tmp_path):
+        lines = "\n".join(
+            [
+                json.dumps(
+                    {
+                        "timestamp": "2026-06-08T18:10:00",
+                        "status": "TRAINING_STARTED",
+                        "level": "INFO",
+                        "message": "Forecast training started.",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "timestamp": "2026-06-08T18:11:00",
+                        "status": "TRAINING_FINISHED",
+                        "level": "INFO",
+                        "message": "Forecast training finished.",
+                        "model_kind": "catboost_regressor",
+                    }
+                ),
+            ]
+        )
+        self._write_jsonl(tmp_path, "forecast_runtime.jsonl", lines)
+        with patch("admin_panel.logs.get_logs_root", return_value=tmp_path):
+            result = build_forecast_runtime_log_payload(statuses=["TRAINING_FINISHED"])
+        assert result["filtered_entries"] == 1
+        assert result["entries"][0]["status"] == "TRAINING_FINISHED"
+
+    def test_job_runtime_payload_searches_by_run_id_and_job_id(self, tmp_path):
+        lines = "\n".join(
+            [
+                json.dumps(
+                    {
+                        "timestamp": "2026-06-08T18:20:00",
+                        "status": "SKIPPED_RESOURCES",
+                        "level": "INFO",
+                        "message": "Job 400 skipped.",
+                        "run_id": "run-xyz",
+                        "job_id": 400,
+                        "reason": "no_feature_satisfied_current_resources_and_forecast_constraints",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "timestamp": "2026-06-08T18:20:02",
+                        "status": "MSERVER_RESPONSE",
+                        "level": "INFO",
+                        "message": "mserver accepted job 401.",
+                        "run_id": "run-abc",
+                        "job_id": 401,
+                    }
+                ),
+            ]
+        )
+        self._write_jsonl(tmp_path, "job_runtime.jsonl", lines)
+        with patch("admin_panel.logs.get_logs_root", return_value=tmp_path):
+            result = build_job_runtime_log_payload(query="run-xyz")
+        assert result["filtered_entries"] == 1
+        assert result["entries"][0]["job_id"] == 400
+
+    def test_job_runtime_payload_suppresses_duplicate_failed_pool_after_failed_attempt(self, tmp_path):
+        lines = "\n".join(
+            [
+                json.dumps(
+                    {
+                        "timestamp": "2026-06-08T18:20:00",
+                        "status": "LAUNCH_FAILED",
+                        "level": "INFO",
+                        "message": "Job 400 stayed pending on the next scheduler tick.",
+                        "run_id": "run-xyz",
+                        "job_id": 400,
+                    }
+                ),
+                json.dumps(
+                    {
+                        "timestamp": "2026-06-08T18:20:01",
+                        "status": "BLOCKED_FAILED_POOL",
+                        "level": "INFO",
+                        "message": "Job 400 blocked by failed pool.",
+                        "run_id": "run-xyz",
+                        "job_id": 400,
+                    }
+                ),
+            ]
+        )
+        self._write_jsonl(tmp_path, "job_runtime.jsonl", lines)
+        with patch("admin_panel.logs.get_logs_root", return_value=tmp_path):
+            result = build_job_runtime_log_payload()
+
+        assert result["total_entries"] == 1
         assert result["entries"][0]["status"] == "LAUNCH_FAILED"

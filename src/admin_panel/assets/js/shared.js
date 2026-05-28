@@ -11,6 +11,12 @@ const clusterOverviewMetrics = document.getElementById('clusterOverviewMetrics')
 const clusterTree = document.getElementById('clusterTree');
 const clusterSourceSelect = document.getElementById('clusterSourceSelect');
 const reloadClusterSourceButton = document.getElementById('reloadClusterSourceButton');
+const resourceSnapshotText = document.getElementById('resourceSnapshotText');
+const resourceTotalsText = document.getElementById('resourceTotalsText');
+const resourceMetrics = document.getElementById('resourceMetrics');
+const resourceTotalMetrics = document.getElementById('resourceTotalMetrics');
+const resourceTree = document.getElementById('resourceTree');
+const reloadResourceTreeButton = document.getElementById('reloadResourceTreeButton');
 const systemStatusSummary = document.getElementById('systemStatusSummary');
 const systemStatusMetrics = document.getElementById('systemStatusMetrics');
 const systemCountdownText = document.getElementById('systemCountdownText');
@@ -19,8 +25,10 @@ const systemQueueSummary = document.getElementById('systemQueueSummary');
 const systemQueueList = document.getElementById('systemQueueList');
 const systemErrorDetails = document.getElementById('systemErrorDetails');
 const systemErrorLog = document.getElementById('systemErrorLog');
+const failedPoolCleanupText = document.getElementById('failedPoolCleanupText');
 const manualMaxLaunchedJobsInput = document.getElementById('manualMaxLaunchedJobsInput');
 const runSchedulerNowButton = document.getElementById('runSchedulerNowButton');
+const resetFailedJobsCacheButton = document.getElementById('resetFailedJobsCacheButton');
 const fileToolbar = document.getElementById('fileToolbar');
 const editorPath = document.getElementById('editorPath');
 const configEditor = document.getElementById('configEditor');
@@ -39,15 +47,52 @@ const newCalendarFileInput = document.getElementById('newCalendarFileInput');
 const templateCalendarYearSelect = document.getElementById('templateCalendarYearSelect');
 const createCalendarYearButton = document.getElementById('createCalendarYearButton');
 const createCalendarFileButton = document.getElementById('createCalendarFileButton');
-const taskshiftLogPath = document.getElementById('taskshiftLogPath');
-const taskshiftLogMetrics = document.getElementById('taskshiftLogMetrics');
-const taskshiftStatusFilters = document.getElementById('taskshiftStatusFilters');
-const taskshiftLogSearchInput = document.getElementById('taskshiftLogSearchInput');
-const reloadTaskshiftLogButton = document.getElementById('reloadTaskshiftLogButton');
-const taskshiftPrevPageButton = document.getElementById('taskshiftPrevPageButton');
-const taskshiftNextPageButton = document.getElementById('taskshiftNextPageButton');
-const taskshiftLogPageInfo = document.getElementById('taskshiftLogPageInfo');
-const taskshiftLogList = document.getElementById('taskshiftLogList');
+const serviceLogPath = document.getElementById('serviceLogPath');
+const serviceLogMetrics = document.getElementById('serviceLogMetrics');
+const serviceStatusFilters = document.getElementById('serviceStatusFilters');
+const serviceLogSearchInput = document.getElementById('serviceLogSearchInput');
+const reloadServiceLogButton = document.getElementById('reloadServiceLogButton');
+const servicePrevPageButton = document.getElementById('servicePrevPageButton');
+const serviceNextPageButton = document.getElementById('serviceNextPageButton');
+const serviceLogPageInfo = document.getElementById('serviceLogPageInfo');
+const serviceLogList = document.getElementById('serviceLogList');
+const schedulerLogPath = document.getElementById('schedulerLogPath');
+const schedulerLogMetrics = document.getElementById('schedulerLogMetrics');
+const schedulerStatusFilters = document.getElementById('schedulerStatusFilters');
+const schedulerLogSearchInput = document.getElementById('schedulerLogSearchInput');
+const reloadSchedulerLogButton = document.getElementById('reloadSchedulerLogButton');
+const schedulerPrevPageButton = document.getElementById('schedulerPrevPageButton');
+const schedulerNextPageButton = document.getElementById('schedulerNextPageButton');
+const schedulerLogPageInfo = document.getElementById('schedulerLogPageInfo');
+const schedulerLogList = document.getElementById('schedulerLogList');
+const mlModelSummary = document.getElementById('mlModelSummary');
+const mlModelMetrics = document.getElementById('mlModelMetrics');
+const mlModelDataDir = document.getElementById('mlModelDataDir');
+const mlForecastWindowText = document.getElementById('mlForecastWindowText');
+const mlPredictionCaption = document.getElementById('mlPredictionCaption');
+const mlPredictionChart = document.getElementById('mlPredictionChart');
+const mlSeasonalityCaption = document.getElementById('mlSeasonalityCaption');
+const mlDailySeasonalityChart = document.getElementById('mlDailySeasonalityChart');
+const mlWeeklySeasonalityChart = document.getElementById('mlWeeklySeasonalityChart');
+const mlYearlySeasonalityChart = document.getElementById('mlYearlySeasonalityChart');
+const mlLogPath = document.getElementById('mlLogPath');
+const mlLogMetrics = document.getElementById('mlLogMetrics');
+const mlStatusFilters = document.getElementById('mlStatusFilters');
+const mlLogSearchInput = document.getElementById('mlLogSearchInput');
+const reloadMlLogButton = document.getElementById('reloadMlLogButton');
+const mlPrevPageButton = document.getElementById('mlPrevPageButton');
+const mlNextPageButton = document.getElementById('mlNextPageButton');
+const mlLogPageInfo = document.getElementById('mlLogPageInfo');
+const mlLogList = document.getElementById('mlLogList');
+const jobRuntimeLogPath = document.getElementById('jobRuntimeLogPath');
+const jobRuntimeLogMetrics = document.getElementById('jobRuntimeLogMetrics');
+const jobRuntimeStatusFilters = document.getElementById('jobRuntimeStatusFilters');
+const jobRuntimeLogSearchInput = document.getElementById('jobRuntimeLogSearchInput');
+const reloadJobRuntimeLogButton = document.getElementById('reloadJobRuntimeLogButton');
+const jobRuntimePrevPageButton = document.getElementById('jobRuntimePrevPageButton');
+const jobRuntimeNextPageButton = document.getElementById('jobRuntimeNextPageButton');
+const jobRuntimeLogPageInfo = document.getElementById('jobRuntimeLogPageInfo');
+const jobRuntimeLogList = document.getElementById('jobRuntimeLogList');
 const jobLogPath = document.getElementById('jobLogPath');
 const jobLogMetrics = document.getElementById('jobLogMetrics');
 const jobStatusFilters = document.getElementById('jobStatusFilters');
@@ -61,6 +106,7 @@ const jobLogList = document.getElementById('jobLogList');
 
 let clusterPayload = null;
 let clusterSourcesCatalog = null;
+let resourceTreePayload = null;
 let systemStatusPayload = null;
 let selectedClusterSourcePath = null;
 let configTargets = [];
@@ -68,9 +114,16 @@ let selectedConfigId = null;
 let calendarCatalog = null;
 let selectedCalendarYear = null;
 let selectedCalendarFile = null;
-let taskshiftLogPayload = null;
+let serviceLogPayload = null;
+let schedulerLogPayload = null;
+let mlModelInsightsPayload = null;
+let mlLogPayload = null;
+let jobRuntimeLogPayload = null;
 let jobLogPayload = null;
-let taskshiftLogPage = 1;
+let serviceLogPage = 1;
+let schedulerLogPage = 1;
+let mlLogPage = 1;
+let jobRuntimeLogPage = 1;
 let jobLogPage = 1;
 let currentLanguage = 'ru';
 let systemStatusPollHandle = null;
@@ -125,12 +178,20 @@ function applyLanguage() {
   setText('.tab-button[data-tab="system"] .tab-caption', 'tab.system.caption');
   setText('.tab-button[data-tab="cluster"] .tab-label', 'tab.cluster.label');
   setText('.tab-button[data-tab="cluster"] .tab-caption', 'tab.cluster.caption');
+  setText('.tab-button[data-tab="resources"] .tab-label', 'tab.resources.label');
+  setText('.tab-button[data-tab="resources"] .tab-caption', 'tab.resources.caption');
   setText('.tab-button[data-tab="configs"] .tab-label', 'tab.configs.label');
   setText('.tab-button[data-tab="configs"] .tab-caption', 'tab.configs.caption');
   setText('.tab-button[data-tab="calendars"] .tab-label', 'tab.calendars.label');
   setText('.tab-button[data-tab="calendars"] .tab-caption', 'tab.calendars.caption');
-  setText('.tab-button[data-tab="logs"] .tab-label', 'tab.logs.label');
-  setText('.tab-button[data-tab="logs"] .tab-caption', 'tab.logs.caption');
+  setText('.tab-button[data-tab="service_logs"] .tab-label', 'tab.service_logs.label');
+  setText('.tab-button[data-tab="service_logs"] .tab-caption', 'tab.service_logs.caption');
+  setText('.tab-button[data-tab="scheduler_logs"] .tab-label', 'tab.scheduler_logs.label');
+  setText('.tab-button[data-tab="scheduler_logs"] .tab-caption', 'tab.scheduler_logs.caption');
+  setText('.tab-button[data-tab="ml_logs"] .tab-label', 'tab.ml_logs.label');
+  setText('.tab-button[data-tab="ml_logs"] .tab-caption', 'tab.ml_logs.caption');
+  setText('.tab-button[data-tab="job_runtime_logs"] .tab-label', 'tab.job_runtime_logs.label');
+  setText('.tab-button[data-tab="job_runtime_logs"] .tab-caption', 'tab.job_runtime_logs.caption');
   setText('.tab-button[data-tab="jobs"] .tab-label', 'tab.jobs.label');
   setText('.tab-button[data-tab="jobs"] .tab-caption', 'tab.jobs.caption');
   setText('.side-card:nth-of-type(1) h3', 'side.auth.title');
@@ -143,8 +204,10 @@ function applyLanguage() {
   setText('[data-panel="system"] .system-grid .system-pane:nth-child(2) h4', 'system.last.title');
   setText('[data-panel="system"] .system-queue-header h4', 'system.queue.title');
   setText('#systemErrorSummary', 'system.error.summary');
+  setText('#failedPoolCleanupText', 'system.failedPoolCleanupLoading');
   setPlaceholder('#manualMaxLaunchedJobsInput', 'system.manualMaxPlaceholder');
   setText('#runSchedulerNowButton', 'button.runSchedulerNow');
+  setText('#resetFailedJobsCacheButton', 'button.resetFailedJobsCache');
   if (!systemStatusPayload) {
     setText('#systemStatusSummary', 'system.summary.loading');
     setText('#systemCountdownText', 'system.next.loading');
@@ -159,6 +222,15 @@ function applyLanguage() {
   if (!clusterPayload) {
     setText('#clusterSourceText', 'cluster.loadingSource');
     setText('#clusterOverviewText', 'cluster.loadingOverview');
+  }
+  setText('#resourceTreeHeading', 'resources.title');
+  setText('#resourceTreeIntro', 'resources.intro');
+  setText('[data-panel="resources"] .grid.two .card:nth-child(1) h3', 'resources.snapshot.title');
+  setText('[data-panel="resources"] .grid.two .card:nth-child(2) h3', 'resources.totals.title');
+  setText('#reloadResourceTreeButton', 'button.reloadResources');
+  if (!resourceTreePayload) {
+    setText('#resourceSnapshotText', 'resources.loadingSnapshot');
+    setText('#resourceTotalsText', 'resources.loadingTotals');
   }
   setText('[data-panel="configs"] .card h3', 'configs.title');
   setText('[data-panel="configs"] .card p', 'configs.description');
@@ -181,15 +253,52 @@ function applyLanguage() {
   }
   setText('#saveCalendarButton', 'button.saveCalendar');
   setText('#reloadCalendarButton', 'button.reloadCalendar');
-  setText('[data-panel="logs"] .card:nth-child(1) h3', 'logs.service.title');
-  setText('[data-panel="logs"] .card:nth-child(2) h3', 'logs.filters.title');
-  if (!taskshiftLogPayload) {
-    setText('#taskshiftLogPath', 'logs.loadingPath');
+  setText('[data-panel="service_logs"] .card:nth-child(1) h3', 'serviceLogs.title');
+  setText('[data-panel="service_logs"] .card:nth-child(2) h3', 'runtimeLogs.filters.title');
+  if (!serviceLogPayload) {
+    setText('#serviceLogPath', 'runtimeLogs.loadingPath');
   }
-  setPlaceholder('#taskshiftLogSearchInput', 'logs.searchPlaceholder');
-  setText('#reloadTaskshiftLogButton', 'button.reloadLog');
-  setText('#taskshiftPrevPageButton', 'button.prevPage');
-  setText('#taskshiftNextPageButton', 'button.nextPage');
+  setPlaceholder('#serviceLogSearchInput', 'serviceLogs.searchPlaceholder');
+  setText('#reloadServiceLogButton', 'button.reloadLog');
+  setText('#servicePrevPageButton', 'button.prevPage');
+  setText('#serviceNextPageButton', 'button.nextPage');
+  setText('[data-panel="scheduler_logs"] .card:nth-child(1) h3', 'schedulerLogs.title');
+  setText('[data-panel="scheduler_logs"] .card:nth-child(2) h3', 'runtimeLogs.filters.title');
+  if (!schedulerLogPayload) {
+    setText('#schedulerLogPath', 'runtimeLogs.loadingPath');
+  }
+  setPlaceholder('#schedulerLogSearchInput', 'schedulerLogs.searchPlaceholder');
+  setText('#reloadSchedulerLogButton', 'button.reloadLog');
+  setText('#schedulerPrevPageButton', 'button.prevPage');
+  setText('#schedulerNextPageButton', 'button.nextPage');
+  setText('[data-panel="ml_logs"] > .grid.two:nth-of-type(1) .card:nth-child(1) h3', 'mlModel.card.summaryTitle');
+  setText('[data-panel="ml_logs"] > .grid.two:nth-of-type(1) .card:nth-child(2) h3', 'mlModel.card.forecastWindowTitle');
+  setText('[data-panel="ml_logs"] > .grid.two:nth-of-type(2) .card:nth-child(1) h3', 'mlModel.card.predictionTitle');
+  setText('[data-panel="ml_logs"] > .grid.two:nth-of-type(2) .card:nth-child(2) h3', 'mlModel.card.seasonalityTitle');
+  setText('[data-panel="ml_logs"] > .grid.two:nth-of-type(3) .card:nth-child(1) h3', 'mlLogs.title');
+  setText('[data-panel="ml_logs"] > .grid.two:nth-of-type(3) .card:nth-child(2) h3', 'runtimeLogs.filters.title');
+  if (!mlLogPayload) {
+    setText('#mlLogPath', 'runtimeLogs.loadingPath');
+  }
+  if (!mlModelInsightsPayload) {
+    setText('#mlModelSummary', 'mlModel.loadingSummary');
+    setText('#mlForecastWindowText', 'mlModel.loadingForecastWindow');
+    setText('#mlPredictionCaption', 'mlModel.loadingPredictionChart');
+    setText('#mlSeasonalityCaption', 'mlModel.loadingSeasonalityChart');
+  }
+  setPlaceholder('#mlLogSearchInput', 'mlLogs.searchPlaceholder');
+  setText('#reloadMlLogButton', 'button.reloadLog');
+  setText('#mlPrevPageButton', 'button.prevPage');
+  setText('#mlNextPageButton', 'button.nextPage');
+  setText('[data-panel="job_runtime_logs"] > .grid.two .card:nth-child(1) h3', 'jobRuntimeLogs.title');
+  setText('[data-panel="job_runtime_logs"] > .grid.two .card:nth-child(2) h3', 'runtimeLogs.filters.title');
+  if (!jobRuntimeLogPayload) {
+    setText('#jobRuntimeLogPath', 'runtimeLogs.loadingPath');
+  }
+  setPlaceholder('#jobRuntimeLogSearchInput', 'jobRuntimeLogs.searchPlaceholder');
+  setText('#reloadJobRuntimeLogButton', 'button.reloadLog');
+  setText('#jobRuntimePrevPageButton', 'button.prevPage');
+  setText('#jobRuntimeNextPageButton', 'button.nextPage');
   setText('[data-panel="jobs"] .card:nth-child(1) h3', 'jobs.title');
   setText('[data-panel="jobs"] .card:nth-child(2) h3', 'jobs.filters.title');
   if (!jobLogPayload) {
@@ -206,8 +315,13 @@ function applyLanguage() {
   if (clusterSourcesCatalog) renderClusterSourceControls();
   if (systemStatusPayload) renderSystemStatus(systemStatusPayload);
   if (clusterPayload) renderClusterTree(clusterPayload);
+  if (resourceTreePayload) renderResourceTree(resourceTreePayload);
   if (calendarCatalog) renderCalendarOverview();
-  if (taskshiftLogPayload) renderTaskshiftLogs(taskshiftLogPayload);
+  if (serviceLogPayload) renderServiceLogs(serviceLogPayload);
+  if (schedulerLogPayload) renderSchedulerRuntimeLogs(schedulerLogPayload);
+  if (mlModelInsightsPayload) renderForecastModelInsights(mlModelInsightsPayload);
+  if (mlLogPayload) renderMlRuntimeLogs(mlLogPayload);
+  if (jobRuntimeLogPayload) renderJobRuntimeLogs(jobRuntimeLogPayload);
   if (jobLogPayload) renderJobLogs(jobLogPayload);
   if (!statusBox.textContent || statusBox.textContent === 'Ready.') {
     setStatus(t('status.ready'));

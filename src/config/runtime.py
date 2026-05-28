@@ -20,7 +20,6 @@ HOT_RELOADABLE_SCHEDULER_FIELDS = (
     "forecast_data_dir",
     "forecast_model_dir",
     "forecast_skip_startup_training",
-    "cluster_config_snapshot_interval_hours",
 )
 
 
@@ -95,6 +94,14 @@ class SchedulerRuntimeConfig:
                 ignoredFields.append("web_panel_enabled")
             if previousConfig.hot_reload_enabled != loadedConfig.hot_reload_enabled:
                 ignoredFields.append("hot_reload_enabled")
+            if previousConfig.forecast_model_update_interval_hours != loadedConfig.forecast_model_update_interval_hours:
+                ignoredFields.append("forecast_model_update_interval_hours")
+            if previousConfig.forecast_prediction_horizon_hours != loadedConfig.forecast_prediction_horizon_hours:
+                ignoredFields.append("forecast_prediction_horizon_hours")
+            if previousConfig.timezone != loadedConfig.timezone:
+                ignoredFields.append("timezone")
+            if previousConfig.cluster_config_refresh_time != loadedConfig.cluster_config_refresh_time:
+                ignoredFields.append("cluster_config_refresh_time")
             if previousConfig.cluster_config_refresh_command != loadedConfig.cluster_config_refresh_command:
                 ignoredFields.append("cluster_config_refresh_command")
             if previousConfig.connector_mserver_url != loadedConfig.connector_mserver_url:

@@ -5,6 +5,8 @@ import socket
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from config.logger import build_runtime_log_event
+
 try:
     from loguru import logger
 except ModuleNotFoundError:
@@ -35,11 +37,13 @@ class SlurmConnector:
         apiToken: str | None = None,
         targetQos: str | None = None,
         timeoutSeconds: int | float = DEFAULT_TIMEOUT_SECONDS,
+        jobRuntimeEventWriter=None,
     ):
         self.mserverUrl = mserverUrl
         self.apiToken = apiToken
         self.targetQos = targetQos
         self.timeoutSeconds = float(timeoutSeconds)
+        self.jobRuntimeEventWriter = jobRuntimeEventWriter
 
     def _build_payload(self, job) -> dict:
         return {
@@ -59,10 +63,25 @@ class SlurmConnector:
             },
         )
 
-    def executeJob(self, job, placement=None):
+    def executeJob(self, job, placement=None, runId: str | None = None):
         if not self.targetQos:
             logger.warning(
                 f"Target QoS is not configured, skipping mserver request for job {job.getID()}"
+            )
+            self._write_job_runtime_event(
+                build_runtime_log_event(
+                    category="job_runtime",
+                    status="MSERVER_SKIPPED",
+                    level="WARNING",
+                    eventType="MSERVER_REQUEST",
+                    message=f"Skipped mserver request for job {job.getID()}: target QoS is not configured.",
+                    run_id=runId,
+                    source="scheduler.connector",
+                    job_id=job.getID(),
+                    job_name=getattr(job, "jobName", None),
+                    partition=getattr(job, "partition", None),
+                    reason="target_qos_not_configured",
+                )
             )
             return False
 
@@ -70,11 +89,41 @@ class SlurmConnector:
             logger.error(
                 f"mserver URL is not configured, skipping job {job.getID()}"
             )
+            self._write_job_runtime_event(
+                build_runtime_log_event(
+                    category="job_runtime",
+                    status="MSERVER_SKIPPED",
+                    level="ERROR",
+                    eventType="MSERVER_REQUEST",
+                    message=f"Skipped mserver request for job {job.getID()}: URL is not configured.",
+                    run_id=runId,
+                    source="scheduler.connector",
+                    job_id=job.getID(),
+                    job_name=getattr(job, "jobName", None),
+                    partition=getattr(job, "partition", None),
+                    reason="mserver_url_not_configured",
+                )
+            )
             return False
 
         if not self.apiToken:
             logger.error(
                 f"mserver API token is not configured, skipping job {job.getID()}"
+            )
+            self._write_job_runtime_event(
+                build_runtime_log_event(
+                    category="job_runtime",
+                    status="MSERVER_SKIPPED",
+                    level="ERROR",
+                    eventType="MSERVER_REQUEST",
+                    message=f"Skipped mserver request for job {job.getID()}: API token is not configured.",
+                    run_id=runId,
+                    source="scheduler.connector",
+                    job_id=job.getID(),
+                    job_name=getattr(job, "jobName", None),
+                    partition=getattr(job, "partition", None),
+                    reason="mserver_api_token_not_configured",
+                )
             )
             return False
 
@@ -82,6 +131,24 @@ class SlurmConnector:
         logger.info(
             f"Setting QoS for job {job.getID()} via mserver '{self.mserverUrl}' "
             f"(QoS={self.targetQos})"
+        )
+        self._write_job_runtime_event(
+            build_runtime_log_event(
+                category="job_runtime",
+                status="MSERVER_REQUEST",
+                eventType="MSERVER_REQUEST",
+                message=f"Sending mserver QoS request for job {job.getID()} to '{self.mserverUrl}'.",
+                run_id=runId,
+                source="scheduler.connector",
+                job_id=job.getID(),
+                job_name=getattr(job, "jobName", None),
+                partition=getattr(job, "partition", None),
+                qos=self.targetQos,
+                request_url=self.mserverUrl,
+                request_payload=payload,
+                feature=getattr(placement, "featureName", None),
+                nodes=getattr(placement, "nodeNames", None),
+            )
         )
 
         try:
@@ -97,17 +164,63 @@ class SlurmConnector:
                 f"mserver rejected QoS request for job {job.getID()} "
                 f"(HTTP {error.code}): {errorBody or getattr(error, 'reason', error.msg)}"
             )
+            self._write_job_runtime_event(
+                build_runtime_log_event(
+                    category="job_runtime",
+                    status="MSERVER_REJECTED",
+                    level="ERROR",
+                    eventType="MSERVER_RESPONSE",
+                    message=f"mserver rejected job {job.getID()} with HTTP {error.code}.",
+                    run_id=runId,
+                    source="scheduler.connector",
+                    job_id=job.getID(),
+                    job_name=getattr(job, "jobName", None),
+                    http_status=error.code,
+                    response_body=errorBody,
+                )
+            )
             return False
         except (URLError, TimeoutError, socket.timeout, OSError) as error:
             logger.error(
                 f"Failed to call mserver for job {job.getID()} "
                 f"(url={self.mserverUrl}, timeout={self.timeoutSeconds:g}s): {error}"
             )
+            self._write_job_runtime_event(
+                build_runtime_log_event(
+                    category="job_runtime",
+                    status="MSERVER_ERROR",
+                    level="ERROR",
+                    eventType="MSERVER_RESPONSE",
+                    message=f"mserver request failed for job {job.getID()}: {error}",
+                    run_id=runId,
+                    source="scheduler.connector",
+                    job_id=job.getID(),
+                    job_name=getattr(job, "jobName", None),
+                    request_url=self.mserverUrl,
+                    timeout_seconds=self.timeoutSeconds,
+                    error=str(error),
+                )
+            )
             return False
 
         if statusCode < 200 or statusCode >= 300:
             logger.error(
                 f"mserver returned HTTP {statusCode} for job {job.getID()}: {responseBody}"
+            )
+            self._write_job_runtime_event(
+                build_runtime_log_event(
+                    category="job_runtime",
+                    status="MSERVER_ERROR",
+                    level="ERROR",
+                    eventType="MSERVER_RESPONSE",
+                    message=f"mserver returned HTTP {statusCode} for job {job.getID()}.",
+                    run_id=runId,
+                    source="scheduler.connector",
+                    job_id=job.getID(),
+                    job_name=getattr(job, "jobName", None),
+                    http_status=statusCode,
+                    response_body=responseBody,
+                )
             )
             return False
 
@@ -116,10 +229,39 @@ class SlurmConnector:
             logger.error(
                 f"mserver failed to set QoS for job {job.getID()}: {responseError}"
             )
+            self._write_job_runtime_event(
+                build_runtime_log_event(
+                    category="job_runtime",
+                    status="MSERVER_ERROR",
+                    level="ERROR",
+                    eventType="MSERVER_RESPONSE",
+                    message=f"mserver reported a QoS application error for job {job.getID()}.",
+                    run_id=runId,
+                    source="scheduler.connector",
+                    job_id=job.getID(),
+                    job_name=getattr(job, "jobName", None),
+                    response_body=responseBody,
+                    error=responseError,
+                )
+            )
             return False
 
         if responseBody:
             logger.debug(f"mserver response for job {job.getID()}: {responseBody}")
+        self._write_job_runtime_event(
+            build_runtime_log_event(
+                category="job_runtime",
+                status="MSERVER_RESPONSE",
+                eventType="MSERVER_RESPONSE",
+                message=f"mserver accepted job {job.getID()} QoS request.",
+                run_id=runId,
+                source="scheduler.connector",
+                job_id=job.getID(),
+                job_name=getattr(job, "jobName", None),
+                http_status=statusCode,
+                response_body=responseBody,
+            )
+        )
         return True
 
     def _extract_response_error(self, responseBody: str) -> str | None:
@@ -141,3 +283,8 @@ class SlurmConnector:
             return str(parsed.get("error") or parsed)
 
         return None
+
+    def _write_job_runtime_event(self, event: dict):
+        if self.jobRuntimeEventWriter is None:
+            return
+        self.jobRuntimeEventWriter(event)

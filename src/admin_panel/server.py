@@ -26,8 +26,18 @@ from .calendars import (
 )
 from .cluster import build_cluster_tree_payload, get_cluster_snapshot_sources_payload
 from .config_store import get_config_targets, read_config_target, write_config_target
-from .logs import build_job_logs_payload, build_taskshift_log_payload, normalize_log_limit, normalize_page
+from .forecast_insights import build_forecast_insights_payload
+from .logs import (
+    build_forecast_runtime_log_payload,
+    build_job_logs_payload,
+    build_job_runtime_log_payload,
+    build_scheduler_runtime_log_payload,
+    build_taskshift_log_payload,
+    normalize_log_limit,
+    normalize_page,
+)
 from .pages import build_app_page_html, build_login_page_html
+from .resource_tree import build_resource_tree_payload
 from .system_status import build_scheduler_system_status_payload
 
 
@@ -87,7 +97,7 @@ class AdminPanelServer:
                 app.handle_post(self)
 
             def log_message(self, format, *args):
-                logger.info("Admin panel | " + format % args)
+                return
 
         return Handler
 
@@ -99,7 +109,11 @@ class AdminPanelServer:
             if self._is_authenticated(handler):
                 self._send_html(handler, build_app_page_html())
             else:
-                self._send_html(handler, build_login_page_html())
+                self._send_html(
+                    handler,
+                    build_login_page_html(),
+                    cookies=[self._clear_auth_cookie_header()],
+                )
             return
 
         if not self._require_auth(handler):
@@ -115,8 +129,19 @@ class AdminPanelServer:
             self._send_json(handler, get_cluster_snapshot_sources_payload())
             return
 
+        if path == "/api/resource-tree":
+            try:
+                self._send_json(handler, build_resource_tree_payload())
+            except Exception as error:
+                self._send_json(handler, {"error": str(error)}, status=HTTPStatus.BAD_REQUEST)
+            return
+
         if path == "/api/system-status":
             self._send_json(handler, self._build_system_status_payload())
+            return
+
+        if path == "/api/forecast/insights":
+            self._send_json(handler, build_forecast_insights_payload(self.projectRoot))
             return
 
         if path == "/api/config-targets":
@@ -131,6 +156,42 @@ class AdminPanelServer:
             self._send_json(
                 handler,
                 build_taskshift_log_payload(
+                    query=params.get("q", [""])[0],
+                    statuses=params.get("statuses", []),
+                    page=normalize_page(params.get("page", [1])[0]),
+                    limit=normalize_log_limit(params.get("limit", [100])[0], default=100, maximum=500),
+                ),
+            )
+            return
+
+        if path == "/api/logs/scheduler-runtime":
+            self._send_json(
+                handler,
+                build_scheduler_runtime_log_payload(
+                    query=params.get("q", [""])[0],
+                    statuses=params.get("statuses", []),
+                    page=normalize_page(params.get("page", [1])[0]),
+                    limit=normalize_log_limit(params.get("limit", [100])[0], default=100, maximum=500),
+                ),
+            )
+            return
+
+        if path == "/api/logs/forecast-runtime":
+            self._send_json(
+                handler,
+                build_forecast_runtime_log_payload(
+                    query=params.get("q", [""])[0],
+                    statuses=params.get("statuses", []),
+                    page=normalize_page(params.get("page", [1])[0]),
+                    limit=normalize_log_limit(params.get("limit", [100])[0], default=100, maximum=500),
+                ),
+            )
+            return
+
+        if path == "/api/logs/job-runtime":
+            self._send_json(
+                handler,
+                build_job_runtime_log_payload(
                     query=params.get("q", [""])[0],
                     statuses=params.get("statuses", []),
                     page=normalize_page(params.get("page", [1])[0]),
@@ -184,7 +245,7 @@ class AdminPanelServer:
                 self._redirect(
                     handler,
                     "/",
-                    cookies=[f"{PANEL_COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Strict"],
+                    cookies=[self._build_auth_cookie_header(token)],
                 )
                 return
 
@@ -192,6 +253,7 @@ class AdminPanelServer:
                 handler,
                 build_login_page_html("Invalid token."),
                 status=HTTPStatus.UNAUTHORIZED,
+                cookies=[self._clear_auth_cookie_header()],
             )
             return
 
@@ -199,7 +261,7 @@ class AdminPanelServer:
             self._redirect(
                 handler,
                 "/",
-                cookies=[f"{PANEL_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"],
+                cookies=[self._clear_auth_cookie_header()],
             )
             return
 
@@ -245,6 +307,26 @@ class AdminPanelServer:
 
             try:
                 self.schedulerController.request_manual_run(maxLaunchedJobs=normalizedMaxLaunchedJobs)
+            except Exception as error:
+                self._send_json(handler, {"error": str(error)}, status=HTTPStatus.CONFLICT)
+                return
+
+            self._send_json(handler, self._build_system_status_payload())
+            return
+
+        if path == "/api/system-status/reset-failed-job-cache":
+            if self.schedulerController is None:
+                self._send_json(
+                    handler,
+                    {
+                        "error": "Failed-job cache reset is unavailable because the panel is not attached to the active scheduler service."
+                    },
+                    status=HTTPStatus.CONFLICT,
+                )
+                return
+
+            try:
+                self.schedulerController.reset_failed_job_cache()
             except Exception as error:
                 self._send_json(handler, {"error": str(error)}, status=HTTPStatus.CONFLICT)
                 return
@@ -364,23 +446,44 @@ class AdminPanelServer:
         if self._is_authenticated(handler):
             return True
 
-        self._send_json(handler, {"error": "Unauthorized"}, status=HTTPStatus.UNAUTHORIZED)
+        self._send_json(
+            handler,
+            {"error": "Unauthorized"},
+            status=HTTPStatus.UNAUTHORIZED,
+            cookies=[self._clear_auth_cookie_header()],
+        )
         return False
 
-    def _send_html(self, handler: BaseHTTPRequestHandler, html: str, status: HTTPStatus = HTTPStatus.OK):
+    def _send_html(
+        self,
+        handler: BaseHTTPRequestHandler,
+        html: str,
+        status: HTTPStatus = HTTPStatus.OK,
+        cookies: list[str] | None = None,
+    ):
         payload = html.encode("utf-8")
         handler.send_response(status)
         handler.send_header("Content-Type", "text/html; charset=utf-8")
         handler.send_header("Content-Length", str(len(payload)))
+        for cookie in cookies or []:
+            handler.send_header("Set-Cookie", cookie)
         handler.end_headers()
         handler.wfile.write(payload)
 
-    def _send_json(self, handler: BaseHTTPRequestHandler, payload: dict, status: HTTPStatus = HTTPStatus.OK):
+    def _send_json(
+        self,
+        handler: BaseHTTPRequestHandler,
+        payload: dict,
+        status: HTTPStatus = HTTPStatus.OK,
+        cookies: list[str] | None = None,
+    ):
         raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         handler.send_response(status)
         handler.send_header("Content-Type", "application/json; charset=utf-8")
         handler.send_header("Cache-Control", "no-store")
         handler.send_header("Content-Length", str(len(raw)))
+        for cookie in cookies or []:
+            handler.send_header("Set-Cookie", cookie)
         handler.end_headers()
         handler.wfile.write(raw)
 
@@ -390,6 +493,12 @@ class AdminPanelServer:
         for cookie in cookies or []:
             handler.send_header("Set-Cookie", cookie)
         handler.end_headers()
+
+    def _build_auth_cookie_header(self, token: str) -> str:
+        return f"{PANEL_COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Lax"
+
+    def _clear_auth_cookie_header(self) -> str:
+        return f"{PANEL_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
 
     def _read_body(self, handler: BaseHTTPRequestHandler) -> bytes:
         contentLength = int(handler.headers.get("Content-Length", "0"))

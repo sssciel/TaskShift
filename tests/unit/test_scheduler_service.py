@@ -1,5 +1,6 @@
 """Unit tests for scheduler.service module - Scheduler class"""
 
+import json
 from unittest.mock import MagicMock, patch
 
 from scheduler.attempt_cache import reset_cache, save_launch_attempts
@@ -628,3 +629,209 @@ class TestFindRunnablePlacement:
 
         assert scheduler.forecastService is None
         mock_forecast_service.assert_not_called()
+
+
+@patch("scheduler.service.append_job_launch_event")
+@patch("scheduler.service.getClusterConfig")
+@patch("scheduler.service.logger")
+class TestSchedulerDecisionLogging:
+    def test_skipped_resources_logged_with_feature_checks(
+        self,
+        mock_logger,
+        mock_get_cluster_config,
+        mock_append_event,
+    ):
+        mock_storage = MagicMock()
+        mock_connector = MagicMock()
+
+        running_a1 = create_running_gpu_job(
+            jobID=5001, cpusReq=8, gpusRequested=4, nodelist="cn-[001-002]"
+        )
+        running_a2 = create_running_gpu_job(
+            jobID=5002, cpusReq=8, gpusRequested=4, nodelist="cn-[003-004]"
+        )
+        mock_storage.getRunningJobs.return_value = [running_a1, running_a2]
+        mock_storage.getPendingJobs.return_value = [
+            create_pending_job(
+                jobID=401, cpusReq=4, constraints="type_a", tresReq="1=4,4=1,1001=1"
+            )
+        ]
+
+        scheduler = _make_scheduler(
+            mock_get_cluster_config,
+            mock_append_event,
+            mock_storage,
+            mock_connector,
+            timelimit=60,
+        )
+        scheduler.schedule()
+
+        decision_logs = [
+            call.args[0]
+            for call in mock_logger.info.call_args_list
+            if call.args and call.args[0].startswith("Scheduler job decision | ")
+        ]
+        assert decision_logs
+        payload = json.loads(decision_logs[-1].split(" | ", 1)[1])
+        assert payload["status"] == "SKIPPED_RESOURCES"
+        assert payload["reason"] == "no_feature_satisfied_current_resource_constraints"
+        assert payload["feature_checks"]
+        assert payload["feature_checks"][0]["decision"] == "placement_unavailable"
+        assert payload["feature_checks"][0]["current_available_gpu"] == 0.0
+
+    def test_attempted_job_logged_with_forecast_availability(
+        self,
+        mock_logger,
+        mock_get_cluster_config,
+        mock_append_event,
+    ):
+        mock_storage = MagicMock()
+        mock_connector = MagicMock()
+        mock_storage.getPendingJobs.return_value = [
+            create_pending_job(
+                jobID=701,
+                cpusReq=4,
+                constraints="type_a",
+                tresReq="1=4,4=1,1001=2",
+                timelimit=30,
+            )
+        ]
+        mock_storage.getRunningJobs.return_value = []
+
+        scheduler = _make_scheduler(
+            mock_get_cluster_config,
+            mock_append_event,
+            mock_storage,
+            mock_connector,
+            timelimit=60,
+        )
+        scheduler.forecastService = MagicMock()
+        scheduler.forecastService.buildFeatureForecast.return_value = MagicMock(
+            availableCpuPercent=100.0,
+            availableGpuPercent=80.0,
+        )
+
+        scheduler.schedule()
+
+        decision_logs = [
+            call.args[0]
+            for call in mock_logger.info.call_args_list
+            if call.args and call.args[0].startswith("Scheduler job decision | ")
+        ]
+        assert decision_logs
+        payload = json.loads(decision_logs[-1].split(" | ", 1)[1])
+        assert payload["status"] == "ATTEMPTED"
+        assert payload["placement_feature"] == "type_a"
+        assert payload["selected_feature_check"]["forecast_available_gpu_percent"] == 80.0
+        assert payload["selected_feature_check"]["forecast_available_gpu_estimate"] == 6.4
+
+    def test_jobs_after_launch_limit_are_logged_as_skipped(
+        self,
+        mock_logger,
+        mock_get_cluster_config,
+        mock_append_event,
+    ):
+        mock_storage = MagicMock()
+        mock_connector = MagicMock()
+        mock_storage.getRunningJobs.return_value = []
+        mock_storage.getPendingJobs.return_value = [
+            create_pending_job(jobID=801, cpusReq=4, constraints="type_a", tresReq="1=4,4=1,1001=1"),
+            create_pending_job(jobID=802, cpusReq=4, constraints="type_a", tresReq="1=4,4=1,1001=1"),
+        ]
+
+        scheduler = _make_scheduler(
+            mock_get_cluster_config,
+            mock_append_event,
+            mock_storage,
+            mock_connector,
+            timelimit=60,
+            max_launched=1,
+        )
+
+        result = scheduler.schedule()
+
+        decision_logs = [
+            json.loads(call.args[0].split(" | ", 1)[1])
+            for call in mock_logger.info.call_args_list
+            if call.args and call.args[0].startswith("Scheduler job decision | ")
+        ]
+        assert len(decision_logs) >= 2
+        assert any(payload["status"] == "ATTEMPTED" for payload in decision_logs)
+        assert any(payload["status"] == "SKIPPED_LAUNCH_LIMIT" for payload in decision_logs)
+        assert result["skipped_by_launch_limit"] == 1
+        assert any(entry["status"] == "SKIPPED_LAUNCH_LIMIT" for entry in result["pending_jobs"])
+
+    def test_resource_reason_is_logged_before_launch_limit(
+        self,
+        mock_logger,
+        mock_get_cluster_config,
+        mock_append_event,
+    ):
+        mock_storage = MagicMock()
+        mock_connector = MagicMock()
+        mock_storage.getRunningJobs.return_value = []
+        mock_storage.getPendingJobs.return_value = [
+            create_pending_job(jobID=811, cpusReq=4, constraints="type_a", tresReq="1=4,4=1,1001=1"),
+            create_pending_job(jobID=812, cpusReq=9999, constraints="type_a", tresReq="1=9999,4=1,1001=1"),
+        ]
+
+        scheduler = _make_scheduler(
+            mock_get_cluster_config,
+            mock_append_event,
+            mock_storage,
+            mock_connector,
+            timelimit=60,
+            max_launched=1,
+        )
+
+        result = scheduler.schedule()
+
+        decision_logs = [
+            json.loads(call.args[0].split(" | ", 1)[1])
+            for call in mock_logger.info.call_args_list
+            if call.args and call.args[0].startswith("Scheduler job decision | ")
+        ]
+        second_job_log = next(payload for payload in decision_logs if payload["job_id"] == 812)
+        assert second_job_log["status"] == "SKIPPED_RESOURCES"
+        assert result["skipped_by_resources"] == 1
+        assert result["skipped_by_launch_limit"] == 0
+
+    def test_forecast_reason_is_logged_before_launch_limit(
+        self,
+        mock_logger,
+        mock_get_cluster_config,
+        mock_append_event,
+    ):
+        mock_storage = MagicMock()
+        mock_connector = MagicMock()
+        mock_storage.getRunningJobs.return_value = []
+        mock_storage.getPendingJobs.return_value = [
+            create_pending_job(jobID=821, cpusReq=4, constraints="type_a", tresReq="1=4,4=1,1001=1"),
+        ]
+
+        scheduler = _make_scheduler(
+            mock_get_cluster_config,
+            mock_append_event,
+            mock_storage,
+            mock_connector,
+            timelimit=60,
+            max_launched=0,
+        )
+        scheduler.forecastService = MagicMock()
+        scheduler.forecastService.buildFeatureForecast.return_value = MagicMock(
+            availableCpuPercent=100.0,
+            availableGpuPercent=0.0,
+        )
+
+        result = scheduler.schedule()
+
+        decision_logs = [
+            json.loads(call.args[0].split(" | ", 1)[1])
+            for call in mock_logger.info.call_args_list
+            if call.args and call.args[0].startswith("Scheduler job decision | ")
+        ]
+        payload = next(entry for entry in decision_logs if entry["job_id"] == 821)
+        assert payload["status"] == "SKIPPED_FORECAST"
+        assert payload["reason"] == "forecast_gpu_availability_below_request"
+        assert result["skipped_by_forecast"] == 1
+        assert result["skipped_by_launch_limit"] == 0

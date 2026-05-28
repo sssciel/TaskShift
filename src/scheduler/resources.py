@@ -143,6 +143,24 @@ class ResourceAvailabilityTree:
             "gpu": sum(node.totalGpu for node in nodes),
         }
 
+    def getFeatureSnapshot(
+        self,
+        featureName: str,
+        allowedNodeNames: set[str] | None = None,
+        maxCpuPerNode: int | None = None,
+    ) -> dict[str, float]:
+        nodes = self._filterCandidateNodes(
+            self.nodesByFeature.get(featureName, []), allowedNodeNames
+        )
+        return {
+            "available_cpu": sum(
+                self._getAvailableCpu(node, maxCpuPerNode) for node in nodes
+            ),
+            "available_gpu": sum(node.availableGpu for node in nodes),
+            "total_cpu": sum(node.totalCpu for node in nodes),
+            "total_gpu": sum(node.totalGpu for node in nodes),
+        }
+
     def _findPlacementOnFeature(
         self,
         job,

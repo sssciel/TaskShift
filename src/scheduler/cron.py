@@ -3,7 +3,7 @@ import os
 import signal
 import subprocess
 import time
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 try:
@@ -12,6 +12,8 @@ except ModuleNotFoundError:
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
     logger.success = logger.info
+
+from config.timezone import now_in_timezone, resolve_timezone
 
 
 LEGACY_TASKSHIFT_CRON_MARKER = "# taskshift-scheduler"
@@ -103,6 +105,7 @@ def run_scheduler_service_loop(
     runImmediately: bool = False,
     schedulerController=None,
     backgroundJobs: list[dict] | None = None,
+    timezoneName: str = "Europe/Moscow",
 ):
     try:
         from apscheduler.schedulers.blocking import BlockingScheduler
@@ -116,8 +119,9 @@ def run_scheduler_service_loop(
     ensure_scheduler_runtime_dirs(projectPath)
     write_scheduler_pid_file(projectPath, pid)
 
-    scheduler = BlockingScheduler()
-    nextRunAt = datetime.now() + timedelta(minutes=SCHEDULER_INTERVAL_MINUTES)
+    timezone = resolve_timezone(timezoneName)
+    scheduler = BlockingScheduler(timezone=timezone)
+    nextRunAt = now_in_timezone(timezoneName) + timedelta(minutes=SCHEDULER_INTERVAL_MINUTES)
     scheduledJobRunner = jobRunner
     if schedulerController is not None:
         scheduledJobRunner = schedulerController.run_scheduled_tick
@@ -157,6 +161,23 @@ def run_scheduler_service_loop(
             )
             continue
 
+        if jobKind == "interval":
+            scheduler.add_job(
+                backgroundJob["runner"],
+                trigger=IntervalTrigger(
+                    hours=backgroundJob["hours"],
+                    start_date=backgroundJob.get("next_run_time"),
+                    timezone=timezone,
+                ),
+                id=backgroundJob["id"],
+                replace_existing=True,
+                coalesce=True,
+                max_instances=1,
+                misfire_grace_time=backgroundJob.get("misfire_grace_time"),
+                next_run_time=backgroundJob.get("next_run_time"),
+            )
+            continue
+
         raise ValueError(f"Unsupported background job kind: {jobKind}")
 
     def handle_stop(signum, frame):
@@ -169,7 +190,7 @@ def run_scheduler_service_loop(
     try:
         logger.info(
             f"TaskShift scheduler service started with PID {pid}. "
-            f"Interval: every {SCHEDULER_INTERVAL_MINUTES} minutes"
+            f"Interval: every {SCHEDULER_INTERVAL_MINUTES} minutes | timezone={timezoneName}"
         )
         if runImmediately:
             if schedulerController is not None:
